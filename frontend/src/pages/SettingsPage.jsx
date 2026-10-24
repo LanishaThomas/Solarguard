@@ -109,7 +109,7 @@ export default function SettingsPage() {
                 </button>
               </div>
               <p className="text-[10px] text-zinc-500 mt-1">
-                e.g. mongodb+srv://admin:pass@cluster0.mongodb.net/solarguard_db
+                Configure your MongoDB connection string or provide via VITE_MONGODB_URI
               </p>
             </div>
 

@@ -27,8 +27,8 @@ export const DEFAULT_SETTINGS = {
   useI2cMultiplexer: false,
   tcaChannelMap: { panel1: 0, panel2: 1, panel3: 2 },
 
-  // MongoDB configuration stubs
-  mongoUri: 'mongodb+srv://solarguard_app:••••••••••••@cluster0.mongodb.net/solarguard_db?retryWrites=true&w=majority',
+  // MongoDB configuration (loaded from .env or configured by user in Settings)
+  mongoUri: '',
   mongoDbName: 'solarguard_db',
   mongoSyncEnabled: false,
 };
