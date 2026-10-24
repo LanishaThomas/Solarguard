@@ -1,0 +1,45 @@
+# ── Node / frontend ────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ── Python / backend ────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+backend/.venv/
+backend/venv/
+backend/*.db
+backend/*.sqlite3
+*.egg-info/
+dist/
+build/
+
+# ── ML / models ─────────────────────────────────────────
+ml/models/*.pt
+ml/models/*.pth
+ml/models/*.onnx
+ml/dataset/
+
+# ── Environment / secrets ───────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+
+# ── OS ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ─────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+
+# ── Logs ────────────────────────────────────────────────
+*.log
+logs/
