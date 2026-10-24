@@ -4,62 +4,93 @@
 
 @layer base {
   * {
-    box-sizing: border-box;
+    border-color: rgba(34, 197, 94, 0.15);
   }
+
   body {
-    background-color: #0a0f0d;
-    color: #e2e8f0;
     font-family: 'Inter', system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    background-color: #080f0a;
   }
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
   }
-  ::-webkit-scrollbar-track {
-    background: #111a14;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #1f3027;
-    border-radius: 3px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #22c55e;
+
+  /* Support for Motorola Edge 50 and mobile safe areas */
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
   }
 }
 
-@layer components {
-  .card {
-    @apply bg-[#162119] border border-[#1f3027] rounded-xl p-4;
+/* Glassmorphism and Custom Utilities */
+.glass-panel {
+  background: rgba(14, 27, 20, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(34, 197, 94, 0.16);
+}
+
+.glass-panel-elevated {
+  background: rgba(18, 35, 26, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(52, 211, 153, 0.22);
+}
+
+.glass-card-interactive {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-interactive:hover {
+  border-color: rgba(74, 222, 128, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px -10px rgba(16, 185, 129, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #080f0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(34, 197, 94, 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 197, 94, 0.6);
+}
+
+/* Edge-50 friendly touch optimizations */
+@media (max-width: 480px) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
   }
-  .btn-primary {
-    @apply bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-400;
-  }
-  .btn-secondary {
-    @apply bg-[#1f3027] hover:bg-[#2a3f30] text-green-300 font-medium py-2 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-700;
-  }
-  .btn-danger {
-    @apply bg-red-700 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200;
-  }
-  .status-ok {
-    @apply inline-flex items-center gap-1 text-green-400 text-xs font-medium bg-green-950/50 px-2 py-0.5 rounded-full;
-  }
-  .status-warn {
-    @apply inline-flex items-center gap-1 text-yellow-400 text-xs font-medium bg-yellow-950/50 px-2 py-0.5 rounded-full;
-  }
-  .status-error {
-    @apply inline-flex items-center gap-1 text-red-400 text-xs font-medium bg-red-950/50 px-2 py-0.5 rounded-full;
-  }
-  .status-info {
-    @apply inline-flex items-center gap-1 text-blue-400 text-xs font-medium bg-blue-950/50 px-2 py-0.5 rounded-full;
-  }
-  .nav-link {
-    @apply flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200;
-  }
-  .nav-link.active {
-    @apply bg-green-800/50 text-green-300;
-  }
-  .nav-link:not(.active) {
-    @apply text-gray-400 hover:text-green-300 hover:bg-[#1f3027];
-  }
+}
+
+/* Recharts tooltip styling fix */
+.recharts-default-tooltip {
+  background-color: #0d1e15 !important;
+  border: 1px solid rgba(52, 211, 153, 0.3) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+}
+
+.recharts-tooltip-label {
+  color: #a7f3d0 !important;
+  font-weight: 600 !important;
+}
+
+.recharts-tooltip-item {
+  color: #f0fdf4 !important;
 }
