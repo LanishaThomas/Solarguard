@@ -37,4 +37,8 @@ def normalize_origin(orig: str) -> str:
 cors_env = os.getenv("CORS_ORIGINS", "*")
 CORS_ORIGINS = [normalize_origin(orig) for orig in cors_env.split(",") if orig.strip()]
 
+# Groq Vision API configuration (Ultra-high accuracy surface detection)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.2-11b-vision-preview").strip()
+
 

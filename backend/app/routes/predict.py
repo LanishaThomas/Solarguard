@@ -28,7 +28,8 @@ async def predict_surface(
     Outputs image classification probabilities for crack, dust, bird_droppings, snow, and clean.
     Enforces automatic wiper safety lockout when damage is suspected.
     """
-    if classifier_instance is None or not classifier_instance.is_loaded:
+    from ..config import GROQ_API_KEY
+    if (classifier_instance is None or not classifier_instance.is_loaded) and not GROQ_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -51,8 +52,23 @@ async def predict_surface(
         contents = await file.read()
         image = load_image_from_bytes(contents)
 
-        # Run genuine model inference
-        result = classifier_instance.predict(image=image, threshold_override=threshold)
+        # 1. Primary high-accuracy visual inference via Groq vision (if API key configured)
+        result = None
+        try:
+            from ..model.groq_vision import classify_surface_with_groq
+            result = classify_surface_with_groq(image=image)
+        except Exception as groq_err:
+            logger.warning(f"Groq vision attempt skipped or failed: {groq_err}")
+
+        # 2. Seamless local MobileNetV3 fallback if Groq not configured or offline
+        if result is None:
+            if classifier_instance and classifier_instance.is_loaded:
+                result = classifier_instance.predict(image=image, threshold_override=threshold)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Classification engine is temporarily unavailable."
+                )
 
         # Log inspection record into MongoDB if connected
         try:
