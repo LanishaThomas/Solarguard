@@ -205,11 +205,21 @@ class MobileNetV3Classifier:
         # If snow neuron fired but surface is NOT physically snow (e.g. warm/earthy dust or indoor lighting):
         if not is_physically_snow and snow_prob > 0.40:
             if dust_prob >= 0.25 or warmth > 5:
-                promoted_dust = max(dust_prob, snow_prob, 0.68)
+                promoted_dust = max(dust_prob, snow_prob, 0.78)
                 class_sigmoids["dust"] = round(promoted_dust, 4)
                 class_sigmoids["snow"] = 0.15
             else:
                 class_sigmoids["snow"] = 0.15
+
+        # Live camera dust sensitivity enhancement:
+        # In live webcam streams, indoor lighting compresses dust sigmoid to 0.25 - 0.45.
+        # If dust signal is present and surface is not blank flat white, promote dust if warmth > 2 or dust > crack & bird
+        if not is_flat_white and class_sigmoids.get("dust", 0.0) >= 0.25:
+            if warmth > 2 or (class_sigmoids.get("dust", 0.0) > class_sigmoids.get("crack", 0.0) and class_sigmoids.get("dust", 0.0) > class_sigmoids.get("bird_droppings", 0.0)):
+                class_sigmoids["dust"] = round(max(class_sigmoids["dust"], 0.78), 4)
+                if warmth > 4 and class_sigmoids.get("crack", 0.0) < 0.70:
+                    class_sigmoids["crack"] = round(min(class_sigmoids.get("crack", 0.0), 0.20), 4)
+
 
         # Rank defect candidates
         defect_classes = [c for c in self.classes if c != "clean"]

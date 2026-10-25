@@ -152,8 +152,8 @@ export default function CameraDetectionPage() {
     };
   }, []);
 
-  // Fast client-side downsampling capture from video element (224x224, ~20KB)
-  // Drastically cuts upload payload from 5MB to 20KB, speeding up inference by 100x
+  // High-fidelity client-side frame capture preserving aspect ratio and surface texture
+  // Preserves particulate dust, smudges, cracks, and defects without squashing or blurring
   const captureBlobFromVideo = useCallback(() => {
     return new Promise((resolve) => {
       if (!videoRef.current) {
@@ -167,14 +167,28 @@ export default function CameraDetectionPage() {
         return;
       }
 
-      // Draw onto 224x224 in-memory canvas directly matching MobileNetV3 resolution
+      // Preserve native aspect ratio (e.g. 16:9, 4:3) with high-detail limit (max 640px)
+      const maxDim = 640;
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
       const canvas = document.createElement('canvas');
-      canvas.width = 224;
-      canvas.height = 224;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext('2d');
-      // Draw entire video frame into 224x224
-      ctx.drawImage(video, 0, 0, 224, 224);
-      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(video, 0, 0, width, height);
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.88);
     });
   }, []);
 

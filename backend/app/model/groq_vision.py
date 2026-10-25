@@ -57,17 +57,17 @@ def classify_surface_with_groq(image: Image.Image) -> Optional[Dict[str, Any]]:
     t_start = time.perf_counter()
 
     try:
-        b64_img = image_to_base64_jpeg(image)
+        b64_img = image_to_base64_jpeg(image, max_dim=512)
 
         prompt = (
-            "You are SolarGuard's optical surface defect classifier. "
-            "Examine this image or camera frame carefully and determine the surface condition. "
-            "Classify into exactly ONE primary category:\n"
-            "1. 'dust' - Any dust accumulation, dusty surface, sand, dirt layer, silt, powdery residue, soil smudges, or environmental particulate soiling. Be attentive: if there is visible dust, powder, smudges, or dirt particles on the panel or test surface, classify as 'dust'.\n"
+            "You are SolarGuard's optical solar panel surface defect inspector. "
+            "Examine this image or camera frame carefully and determine the surface condition.\n\n"
+            "CRITICAL DEFECT INSTRUCTIONS:\n"
+            "1. 'dust' - Any dust accumulation, sand particles, dirt layer, silt, powdery residue, soil smudges, haziness, or particulate soiling on the surface. Be sensitive to dust: if the panel, webcam view, or test surface has an earthy/brownish/yellowish hue, haziness, smudges, powdery film, or visible specks of dust, classify as 'dust'.\n"
             "2. 'crack' - Structural fractures, cracked panel glass, shattered cells, micro-cracks, or dendritic breakage (CRITICAL DAMAGE).\n"
             "3. 'bird_droppings' - Chalky white/grey localized splatters, bird poop, or opaque spots.\n"
             "4. 'snow' - Solid snow drifts, frost, or ice accumulation covering solar cells.\n"
-            "5. 'clean' - Pristine surface without damage, spotless, clear, or nominal background with no visible dust or contamination.\n\n"
+            "5. 'clean' - Pristine, spotless, clear surface with zero visible dust, smudges, or defects.\n\n"
             "Return ONLY a JSON object with this exact structure:\n"
             "{\n"
             "  \"condition\": \"dust\" | \"crack\" | \"bird_droppings\" | \"snow\" | \"clean\",\n"
@@ -83,11 +83,11 @@ def classify_surface_with_groq(image: Image.Image) -> Optional[Dict[str, Any]]:
             "}"
         )
 
-        models_to_try = [GROQ_MODEL]
-        if GROQ_MODEL != "llama-3.2-11b-vision-preview":
-            models_to_try.append("llama-3.2-11b-vision-preview")
-        if "llama-3.2-90b-vision-preview" not in models_to_try:
-            models_to_try.append("llama-3.2-90b-vision-preview")
+        models_to_try = []
+        if GROQ_MODEL and GROQ_MODEL not in ["llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"]:
+            models_to_try.append(GROQ_MODEL)
+        if "qwen/qwen3.8-27b" not in models_to_try:
+            models_to_try.append("qwen/qwen3.8-27b")
 
         raw_content = None
         last_err = None
@@ -111,9 +111,9 @@ def classify_surface_with_groq(image: Image.Image) -> Optional[Dict[str, Any]]:
                         }
                     ],
                     temperature=0.1,
-                    max_tokens=400,
+                    max_tokens=300,
                     response_format={"type": "json_object"},
-                    timeout=8.0
+                    timeout=6.0
                 )
                 raw_content = chat_completion.choices[0].message.content
                 if raw_content:

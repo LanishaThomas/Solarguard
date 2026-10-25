@@ -39,6 +39,6 @@ CORS_ORIGINS = [normalize_origin(orig) for orig in cors_env.split(",") if orig.s
 
 # Groq Vision API configuration (Ultra-high accuracy surface detection)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.2-11b-vision-preview").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b").strip()
 
 
