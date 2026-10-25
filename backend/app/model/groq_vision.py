@@ -20,7 +20,7 @@ def get_groq_client():
     if _groq_client is None and GROQ_API_KEY:
         try:
             from groq import Groq
-            _groq_client = Groq(api_key=GROQ_API_KEY)
+            _groq_client = Groq(api_key=GROQ_API_KEY, max_retries=0)
             logger.info("Initialized Groq Vision Client for SolarGuard surface inference.")
         except Exception as e:
             logger.warning(f"Could not initialize Groq client: {e}")
