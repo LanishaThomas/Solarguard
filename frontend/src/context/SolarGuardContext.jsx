@@ -354,9 +354,8 @@ export function SolarGuardProvider({ children }) {
     return () => clearInterval(id);
   }, [backendUrl]);
 
-  // Live model prediction handler
-  // Live model prediction handler (supports engine: 'mobilenetv3', 'groq', or 'auto')
-  const predictLiveImage = async (imageBlob, threshold = null, engine = 'mobilenetv3') => {
+  // Optical surface defect prediction handler (MobileNetV3 Neural Network)
+  const predictLiveImage = async (imageBlob, threshold = null) => {
     try {
       const formData = new FormData();
       formData.append('file', imageBlob, 'capture.jpg');
@@ -364,9 +363,6 @@ export function SolarGuardProvider({ children }) {
       const params = new URLSearchParams();
       if (threshold !== null && threshold !== undefined) {
         params.append('threshold', threshold);
-      }
-      if (engine) {
-        params.append('engine', engine);
       }
       const queryStr = params.toString() ? `?${params.toString()}` : '';
       const url = `${backendUrl}/api/predict${queryStr}`;
