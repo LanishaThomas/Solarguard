@@ -51,7 +51,17 @@ async def predict_surface(
 
         # Run genuine model inference
         result = classifier_instance.predict(image=image)
+
+        # Log inspection record into MongoDB if connected
+        try:
+            from ..db.mongodb import db_client
+            if db_client.is_connected:
+                db_client.log_inspection(result)
+        except Exception as db_err:
+            logger.warning(f"MongoDB inspection log error: {db_err}")
+
         return JSONResponse(content=result)
+
 
     except Exception as e:
         logger.error(f"Inference error: {str(e)}", exc_info=True)

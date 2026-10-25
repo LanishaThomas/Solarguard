@@ -1,38 +1,32 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { INITIAL_PANELS, generateInitialHistory, INITIAL_ALERTS, INITIAL_CLEANING_LOGS, INSPECTION_PRESETS } from '../data/initialData';
+import { INITIAL_PANELS } from '../data/initialData';
 import { DEFAULT_SETTINGS } from '../data/defaultSettings';
-import { calculateMedian, evaluatePanelHealth, evaluateTemperature } from '../utils/calculations';
 
 const SolarGuardContext = createContext(null);
 
 export function SolarGuardProvider({ children }) {
   // Settings
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [isDemoMode, setIsDemoMode] = useState(true);
-  const [activeScenario, setActiveScenario] = useState('shaded_panel_2');
 
-  // Telemetry & Hardware State
+  // Telemetry & Hardware State (Starts in honest standby - zero fake data)
   const [panels, setPanels] = useState(INITIAL_PANELS);
-  const [temperature, setTemperature] = useState(41.8);
-  const [telemetryHistory, setTelemetryHistory] = useState(generateInitialHistory());
-  const [dailyYieldWh, setDailyYieldWh] = useState(14.85); // Wh accumulated today
+  const [temperature, setTemperature] = useState(0.0);
+  const [telemetryHistory, setTelemetryHistory] = useState([]);
+  const [dailyYieldWh, setDailyYieldWh] = useState(0.0);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
-  // Alerts
-  const [alerts, setAlerts] = useState(INITIAL_ALERTS);
+  // Genuine Alerts only (Starts empty)
+  const [alerts, setAlerts] = useState([]);
 
-  // Surface Inspection ML State
+  // Surface Inspection ML State (Starts empty until image is captured/uploaded)
   const [inspection, setInspection] = useState({
-    preset: INSPECTION_PRESETS[0], // Leaves by default
+    preset: null,
     customImage: null,
-    timestamp: new Date().toISOString(),
-    history: [
-      { id: 'INSP-1', ...INSPECTION_PRESETS[0], timestamp: new Date(Date.now() - 3600000).toISOString() },
-      { id: 'INSP-2', ...INSPECTION_PRESETS[1], timestamp: new Date(Date.now() - 7200000).toISOString() }
-    ]
+    timestamp: null,
+    history: []
   });
 
-  // FastAPI Inference Backend State (Supports Vercel env, localStorage, and LAN IP for mobile testing)
+  // FastAPI Inference Backend State
   const getInitialBackendUrl = () => {
     if (import.meta.env.VITE_BACKEND_URL) {
       return import.meta.env.VITE_BACKEND_URL.replace(/\/+$/, '');
@@ -70,26 +64,25 @@ export function SolarGuardProvider({ children }) {
     lastPing: null,
   });
 
-
-  // Cleaning Mechanism State
+  // Cleaning Mechanism State (Starts empty - genuine operational logs only)
   const [cleaningState, setCleaningState] = useState({
     status: 'idle', // 'idle' | 'wiping' | 'cooldown' | 'fault' | 'stopped'
     progress: 0,
     cooldownRemaining: 0,
-    lastCleaned: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    lastCleaned: null,
     autoCleaningEnabled: false,
-    history: INITIAL_CLEANING_LOGS
+    history: []
   });
 
-  // Connectivity Status
+  // Connectivity Status (Real reflection of connection)
   const [systemStatus, setSystemStatus] = useState({
-    esp32: { connected: true, ip: '192.168.1.150', latencyMs: 18, lastSeen: new Date().toISOString() },
-    mlService: { connected: true, model: 'MobileNetV3-Solar', latencyMs: 45 },
-    mongoDb: { connected: true, status: 'Ready for Storage Sync', pingMs: 24 },
-    camera: { connected: true, source: 'Integrated Webcam / Mobile Stream' }
+    esp32: { connected: false, ip: settings.esp32Endpoint || '192.168.1.150', latencyMs: 0, lastSeen: null },
+    mlService: { connected: false, model: 'MobileNetV3-Small', latencyMs: 0 },
+    mongoDb: { connected: false, status: 'Configured via .env' },
+    camera: { connected: true, source: 'Mobile Camera / Webcam' }
   });
 
-  // Motorola Edge 50 preview frame toggle (for testing/evaluating mobile view)
+  // Motorola Edge 50 preview frame toggle
   const [mobilePreviewMode, setMobilePreviewMode] = useState(false);
 
   // Total Power Calculation
@@ -129,123 +122,78 @@ export function SolarGuardProvider({ children }) {
     }
   }, [cleaningState.status, cleaningState.cooldownRemaining]);
 
-  // Telemetry Simulation loop (Only active when isDemoMode is TRUE)
+  // Real Hardware Polling (Attempts genuine connection to ESP32 gateway endpoint if reachable)
   useEffect(() => {
-    if (!isDemoMode) {
-      // In Real hardware mode, if no backend server is answering, show hardware disconnected
-      setSystemStatus((prev) => ({
-        ...prev,
-        esp32: { ...prev.esp32, connected: false },
-        mongoDb: { ...prev.mongoDb, connected: false }
-      }));
-      return;
-    }
+    const endpoint = settings.esp32Endpoint;
+    if (!endpoint) return;
 
-    setSystemStatus((prev) => ({
-      ...prev,
-      esp32: { ...prev.esp32, connected: true },
-      mongoDb: { ...prev.mongoDb, connected: true }
-    }));
+    let isMounted = true;
+    const fetchTelemetry = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const res = await fetch(`${endpoint}/api/telemetry`, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-    const interval = setInterval(() => {
-      setLastUpdated(new Date());
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          // Real hardware packet received
+          setLastUpdated(new Date());
+          setSystemStatus((prev) => ({
+            ...prev,
+            esp32: { connected: true, ip: endpoint, latencyMs: 15, lastSeen: new Date().toLocaleTimeString() }
+          }));
 
-      setPanels((prevPanels) => {
-        return prevPanels.map((p) => {
-          // Add small jitter
-          const jitterV = (Math.random() * 0.04 - 0.02);
-          const jitterA = (Math.random() * 0.006 - 0.003);
-
-          let baseV = 5.4;
-          let baseA = 0.185;
-          let status = 'optimal';
-
-          if (activeScenario === 'normal') {
-            baseV = 5.4 + jitterV;
-            baseA = 0.185 + jitterA;
-          } else if (activeScenario === 'shaded_panel_2') {
-            if (p.id === 2) {
-              baseV = 4.82 + jitterV;
-              baseA = 0.086 + jitterA;
-              status = 'warning';
-            } else {
-              baseV = 5.4 + jitterV;
-              baseA = 0.185 + jitterA;
-            }
-          } else if (activeScenario === 'thermal_alert') {
-            baseV = 5.1 + jitterV;
-            baseA = 0.17 + jitterA;
-          } else if (activeScenario === 'surface_crack') {
-            if (p.id === 2) {
-              baseV = 4.2 + jitterV;
-              baseA = 0.05 + jitterA;
-              status = 'critical';
-            }
-          } else if (activeScenario === 'sensor_fault') {
-            if (p.id === 3) {
-              return { ...p, status: 'offline', voltage_v: 0, current_a: 0, power_w: 0 };
-            }
+          if (data.panels && Array.isArray(data.panels)) {
+            setPanels(data.panels);
+          }
+          if (typeof data.temperature === 'number') {
+            setTemperature(data.temperature);
           }
 
-          const voltage = Math.max(0, +(baseV).toFixed(2));
-          const current = Math.max(0, +(baseA).toFixed(3));
-          const power = +(voltage * current).toFixed(3);
-
-          return {
-            ...p,
-            voltage_v: voltage,
-            current_a: current,
-            power_w: power,
-            status,
-          };
-        });
-      });
-
-      // Update temperature
-      setTemperature((prevTemp) => {
-        if (activeScenario === 'thermal_alert') {
-          return +(Math.min(64.5, prevTemp + 0.3)).toFixed(1);
+          // Record genuine telemetry point
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setTelemetryHistory((prev) => {
+            const newPoint = {
+              timestamp: now.toISOString(),
+              timeFormatted: timeStr,
+              panel1_power: data.panels?.[0]?.power_w || 0,
+              panel2_power: data.panels?.[1]?.power_w || 0,
+              panel3_power: data.panels?.[2]?.power_w || 0,
+              total_power: data.total_power || 0,
+              temperature: data.temperature || 0,
+            };
+            return [...prev.slice(-29), newPoint];
+          });
         }
-        // slight drift around 41-43°C
-        return +(41.5 + Math.sin(Date.now() / 15000) * 1.5 + (Math.random() * 0.2 - 0.1)).toFixed(1);
-      });
+      } catch (err) {
+        // Hardware offline
+        if (isMounted) {
+          setSystemStatus((prev) => ({
+            ...prev,
+            esp32: { ...prev.esp32, connected: false }
+          }));
+        }
+      }
+    };
 
-      // Add point to history periodically
-      setTelemetryHistory((prev) => {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const last = prev[prev.length - 1] || {};
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, settings.telemetryIntervalMs || 2500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [settings.esp32Endpoint, settings.telemetryIntervalMs]);
 
-        const newPoint = {
-          timestamp: now.toISOString(),
-          timeFormatted: timeStr,
-          panel1_power: panels[0]?.power_w || 1.0,
-          panel2_power: panels[1]?.power_w || 0.42,
-          panel3_power: panels[2]?.power_w || 0.98,
-          total_power: +(totalPower).toFixed(3),
-          temperature: temperature,
-        };
-
-        const updated = [...prev.slice(1), newPoint];
-        return updated;
-      });
-
-      // Accumulate daily yield Wh
-      setDailyYieldWh((prev) => +(prev + (totalPower * (settings.telemetryIntervalMs / 3600000))).toFixed(3));
-
-    }, settings.telemetryIntervalMs);
-
-    return () => clearInterval(interval);
-  }, [isDemoMode, activeScenario, settings.telemetryIntervalMs, totalPower, panels, temperature]);
-
-  // Wiper Trigger Function with Safety Rules
+  // Wiper Trigger Function
   const triggerWipe = (triggerType = 'Manual') => {
     // Safety Rule 1: Check if crack is detected
     if (inspection.preset?.isDamage) {
       addAlert({
         type: 'DAMAGE_LOCKOUT',
         severity: 'critical',
-        panelId: 2,
+        panelId: null,
         title: 'Wiper Command Blocked: Crack Detected',
         message: 'Servo movement aborted. Operating the wiper over fractured glass causes severe abrasive damage.',
         recommendedAction: 'Inspect surface visually and repair damaged cell before clearing lock.'
@@ -253,7 +201,6 @@ export function SolarGuardProvider({ children }) {
       return { success: false, reason: 'BLOCKED_DAMAGE' };
     }
 
-    // Safety Rule 2: Check if currently wiping or in cooldown
     if (cleaningState.status === 'wiping') {
       return { success: false, reason: 'ALREADY_WIPING' };
     }
@@ -295,13 +242,13 @@ export function SolarGuardProvider({ children }) {
         clearInterval(wipeIntervalRef.current);
 
         const newLog = {
-          id: `CLN-${Date.now().toString().slice(-3)}`,
+          id: `CLN-${Date.now().toString().slice(-4)}`,
           timestamp: new Date().toISOString(),
           triggerType,
           durationMs: duration,
-          sweepAngle: `${settings.minSweepAngle}° ➔ ${settings.maxSweepAngle}°`,
+          sweepAngle: `${settings.minSweepAngle || 0}° ➔ ${settings.maxSweepAngle || 180}°`,
           status: 'Completed',
-          notes: `${triggerType} sweep executed nominally across all 3 panels.`
+          notes: `${triggerType} sweep executed nominally across solar surface.`
         };
 
         setCleaningState((prev) => ({
@@ -312,29 +259,6 @@ export function SolarGuardProvider({ children }) {
           lastCleaned: new Date().toISOString(),
           history: [newLog, ...prev.history]
         }));
-
-        // If the surface had cleanable debris, simulate that the panel is now cleaned!
-        if (inspection.preset?.isCleanable) {
-          setInspection((prev) => ({
-            ...prev,
-            preset: INSPECTION_PRESETS.find((p) => p.className === 'clean') || INSPECTION_PRESETS[1],
-            timestamp: new Date().toISOString(),
-          }));
-
-          // If Panel 2 was shaded by debris, restore its output in simulation
-          if (activeScenario === 'shaded_panel_2') {
-            setActiveScenario('normal');
-          }
-
-          addAlert({
-            type: 'CLEANING_COMPLETED',
-            severity: 'info',
-            panelId: 2,
-            title: 'Panel Surface Cleaned',
-            message: 'Wiper successfully cleared surface obstruction. Output recovering to nominal baseline.',
-            recommendedAction: 'Monitor panel recovery curve'
-          });
-        }
       }
     }, intervalMs);
 
@@ -363,7 +287,6 @@ export function SolarGuardProvider({ children }) {
     });
   };
 
-  // Reset emergency stop
   const resetWiperFault = () => {
     setCleaningState((prev) => ({
       ...prev,
@@ -373,35 +296,12 @@ export function SolarGuardProvider({ children }) {
     }));
   };
 
-  // Change inspection preset
-  const setInspectionPreset = (presetId) => {
-    const selected = INSPECTION_PRESETS.find((p) => p.id === presetId) || INSPECTION_PRESETS[0];
+  const setInspectionPreset = (preset) => {
     setInspection((prev) => ({
       ...prev,
-      preset: selected,
+      preset,
       timestamp: new Date().toISOString(),
-      history: [
-        { id: `INSP-${Date.now().toString().slice(-4)}`, ...selected, timestamp: new Date().toISOString() },
-        ...prev.history
-      ]
     }));
-
-    // If crack preset chosen, trigger safety alert
-    if (selected.isDamage) {
-      addAlert({
-        type: 'DAMAGE_WARNING',
-        severity: 'critical',
-        panelId: 2,
-        title: 'Surface Crack / Breakage Identified',
-        message: 'Visual ML inspection classified surface as "crack_or_breakage" with ' + Math.round(selected.confidence * 100) + '% confidence. Automatic wiping locked.',
-        recommendedAction: 'Inspect physically and repair damaged panel'
-      });
-    } else if (selected.isCleanable && cleaningState.autoCleaningEnabled) {
-      // Auto cleaning triggered!
-      setTimeout(() => {
-        triggerWipe('Auto (CV)');
-      }, 1000);
-    }
   };
 
   // Acknowledge alert
@@ -411,7 +311,6 @@ export function SolarGuardProvider({ children }) {
     );
   };
 
-  // Clear acknowledged alerts
   const clearAcknowledgedAlerts = () => {
     setAlerts((prev) => prev.filter((a) => !a.acknowledged));
   };
@@ -438,9 +337,11 @@ export function SolarGuardProvider({ children }) {
         }));
       } else {
         setModelStatus((prev) => ({ ...prev, isConnected: false, lastPing: new Date().toLocaleTimeString() }));
+        setSystemStatus((prev) => ({ ...prev, mlService: { connected: false, model: 'MobileNetV3', latencyMs: 0 } }));
       }
     } catch (err) {
       setModelStatus((prev) => ({ ...prev, isConnected: false, lastPing: new Date().toLocaleTimeString() }));
+      setSystemStatus((prev) => ({ ...prev, mlService: { connected: false, model: 'MobileNetV3', latencyMs: 0 } }));
     }
   };
 
@@ -515,7 +416,6 @@ export function SolarGuardProvider({ children }) {
   const toggleAutoCleaning = () => {
     setCleaningState((prev) => {
       const next = !prev.autoCleaningEnabled;
-      // If turned on and current surface is cleanable, trigger cleaning
       if (next && inspection.preset?.isCleanable && prev.status === 'idle') {
         setTimeout(() => triggerWipe('Auto (CV)'), 500);
       }
@@ -528,10 +428,10 @@ export function SolarGuardProvider({ children }) {
       value={{
         settings,
         setSettings,
-        isDemoMode,
-        setIsDemoMode,
-        activeScenario,
-        setActiveScenario,
+        isDemoMode: false,
+        setIsDemoMode: () => {},
+        activeScenario: 'normal',
+        setActiveScenario: () => {},
         panels,
         temperature,
         totalPower,
@@ -564,7 +464,6 @@ export function SolarGuardProvider({ children }) {
       {children}
     </SolarGuardContext.Provider>
   );
-
 }
 
 export function useSolarGuard() {

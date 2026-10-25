@@ -7,114 +7,114 @@ import {
   Camera, 
   Database, 
   Smartphone, 
-  RotateCw, 
-  Play, 
-  Layers
+  RotateCw
 } from 'lucide-react';
 import { formatTimestamp } from '../../utils/formatters';
 
 export default function Header({ activeTab, setActiveTab }) {
   const { 
-    isDemoMode, 
     lastUpdated, 
     systemStatus, 
     mobilePreviewMode, 
     setMobilePreviewMode,
     cleaningState,
-    triggerWipe
+    triggerWipe,
+    modelStatus
   } = useSolarGuard();
 
   return (
-    <header className="sticky top-0 z-30 bg-[#09140d]/90 backdrop-blur-md border-b border-emerald-500/20 px-3 edge50:px-4 sm:px-6 py-3 transition-all">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 edge50:px-4 sm:px-6 py-3 transition-all shadow-sm">
       <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
         {/* Brand & Logo */}
         <div className="flex items-center gap-3">
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-950/80 border border-emerald-400/30 shadow-glow-green">
-            <Sun className="w-5 h-5 text-emerald-400 animate-spin-slow" />
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-600 flex items-center justify-center border border-black">
+          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-amber-50 border border-amber-300 shadow-sm">
+            <Sun className="w-5 h-5 text-amber-500 animate-spin-slow" />
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center border-2 border-white shadow-xs">
               <ShieldCheck className="w-2.5 h-2.5 text-white" />
             </div>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight bg-gradient-to-r from-emerald-200 via-emerald-400 to-teal-300 bg-clip-text text-transparent">
-                SolarGuard
+              <h1 className="text-lg sm:text-xl font-bold font-heading tracking-tight text-slate-900">
+                Solar<span className="text-blue-600">Guard</span>
               </h1>
-              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 font-semibold hidden edge50:inline">
+              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-900 font-bold hidden edge50:inline">
                 IoT System
               </span>
             </div>
-            <p className="text-[11px] text-zinc-400 hidden sm:block">
-              3-Panel Telemetry • AI Surface Inspection • Automated Wiper
+            <p className="text-[11px] text-slate-500 hidden sm:block">
+              3-Panel Telemetry • AI Surface Inspection • Automated SG90 Wiper
             </p>
           </div>
         </div>
 
         {/* Center / System Status Indicators */}
-        <div className="hidden lg:flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/80 border border-zinc-800">
-            <Wifi className={`w-3.5 h-3.5 ${systemStatus.esp32.connected ? 'text-emerald-400' : 'text-rose-400'}`} />
-            <span className="text-zinc-400">ESP32:</span>
-            <span className={`font-mono ${systemStatus.esp32.connected ? 'text-emerald-300' : 'text-rose-400'}`}>
-              {systemStatus.esp32.connected ? 'Online' : 'Offline'}
+        <div className="hidden lg:flex items-center gap-3 text-xs font-mono">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
+            <Wifi className={`w-3.5 h-3.5 ${systemStatus.esp32.connected ? 'text-blue-600' : 'text-slate-400'}`} />
+            <span className="text-slate-500">ESP32:</span>
+            <span className={`font-bold ${systemStatus.esp32.connected ? 'text-blue-600' : 'text-slate-500'}`}>
+              {systemStatus.esp32.connected ? 'Online' : 'Standby'}
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/80 border border-zinc-800">
-            <Camera className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-zinc-400">Camera:</span>
-            <span className="font-mono text-emerald-300">Ready</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
+            <Camera className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-slate-500">Model:</span>
+            <span className={`font-bold ${modelStatus.isConnected ? 'text-blue-600' : 'text-slate-500'}`}>
+              {modelStatus.isConnected ? 'Loaded' : 'Ready'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/80 border border-zinc-800">
-            <Database className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-zinc-400">MongoDB:</span>
-            <span className="font-mono text-emerald-300">Atlas</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
+            <Database className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-slate-500">DB:</span>
+            <span className="font-bold text-slate-700">.env</span>
           </div>
         </div>
 
         {/* Right Action buttons */}
         <div className="flex items-center gap-2">
           {/* Last sync timestamp */}
-          <div className="text-right hidden sm:block text-[11px] font-mono text-zinc-400">
-            <div className="text-zinc-500 text-[10px]">LAST SAMPLE</div>
-            <span className="text-emerald-400/90 font-medium">{formatTimestamp(lastUpdated)}</span>
+          <div className="text-right hidden sm:block text-[11px] font-mono text-slate-500">
+            <div className="text-[10px] uppercase font-bold text-slate-400">STATUS</div>
+            <span className="text-slate-700 font-semibold">{formatTimestamp(lastUpdated)}</span>
           </div>
 
-          {/* Quick Wipe Action */}
+          {/* Quick Wipe Action in Solar Yellow / Blue */}
           <button
             onClick={() => triggerWipe('Quick Header Action')}
             disabled={cleaningState.status === 'wiping' || cleaningState.status === 'cooldown'}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-heading font-semibold transition-all shadow-sm ${
               cleaningState.status === 'wiping'
-                ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 animate-pulse'
+                ? 'bg-amber-400 text-amber-950 border border-amber-500 animate-pulse'
                 : cleaningState.status === 'cooldown'
-                ? 'bg-amber-950/60 text-amber-300 border border-amber-500/30 opacity-70 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-glow-green'
+                ? 'bg-slate-100 text-slate-500 border border-slate-300 opacity-80 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
           >
-            <RotateCw className={`w-3.5 h-3.5 ${cleaningState.status === 'wiping' ? 'animate-spin' : ''}`} />
+            <RotateCw className={`w-3.5 h-3.5 ${cleaningState.status === 'wiping' ? 'animate-spin text-amber-900' : 'text-white'}`} />
             <span className="hidden edge50:inline">
               {cleaningState.status === 'wiping'
                 ? `Wiping ${cleaningState.progress}%`
                 : cleaningState.status === 'cooldown'
                 ? `Cooldown (${cleaningState.cooldownRemaining}s)`
-                : 'Wipe Now'}
+                : 'Wipe Surface'}
             </span>
           </button>
 
-          {/* Motorola Edge 50 Frame Toggle */}
+          {/* Motorola Edge 50 View Toggle */}
           <button
             onClick={() => setMobilePreviewMode(!mobilePreviewMode)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition ${
               mobilePreviewMode
-                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-glow-green'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-emerald-500/40 hover:text-emerald-200'
+                ? 'bg-blue-50 border-blue-400 text-blue-700'
+                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
             }`}
-            title="Toggle Motorola Edge 50 Device Frame Preview (20:9 viewport)"
+            title="Toggle Mobile View Preview"
           >
-            <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden md:inline">Edge 50 View</span>
+            <Smartphone className="w-3.5 h-3.5 text-blue-600" />
+            <span className="hidden md:inline">Mobile Frame</span>
           </button>
         </div>
       </div>

@@ -35,14 +35,18 @@ async def lifespan(app: FastAPI):
             f"Checkpoint file '{model_file.name}' not found at {model_file.resolve()}. "
             "Initializing MobileNetV3-Small architecture baseline for pipeline readiness."
         )
-        classifier.initialize_synthetic_baseline()
+    # Initialize MongoDB connection from .env
+    from .db.mongodb import db_client
+    db_client.connect()
 
     yield
+    db_client.close()
     logger.info("SolarGuard Inference Service shutting down.")
 
 app = FastAPI(
     title="SolarGuard AI Inference API",
     description="Fine-tuned MobileNetV3-Small multi-label defect and soiling detection for smart solar arrays.",
+
     version="1.0.0",
     lifespan=lifespan
 )
@@ -70,6 +74,12 @@ else:
 app.include_router(health_router)
 app.include_router(predict_router)
 app.include_router(info_router)
+
+@app.get("/api/db/status", tags=["Database"])
+def get_db_status():
+    from .db.mongodb import db_client
+    return db_client.get_status()
+
 
 if __name__ == "__main__":
     import uvicorn

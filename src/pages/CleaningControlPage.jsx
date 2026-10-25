@@ -5,7 +5,6 @@ import {
   Power, 
   ShieldCheck, 
   ShieldAlert, 
-  AlertOctagon, 
   Sliders, 
   Timer, 
   CheckCircle2, 
@@ -42,10 +41,10 @@ export default function CleaningControlPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold font-heading text-zinc-100 tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-bold font-heading text-slate-900 tracking-tight">
             SG90 Wiper Control &amp; Mechanical Actuator Center
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-400">
+          <p className="text-xs sm:text-sm text-slate-600">
             Automated and manual sweep actuation with thermal cooldown, servo torque safety, and emergency cut-off
           </p>
         </div>
@@ -56,68 +55,54 @@ export default function CleaningControlPage() {
       </div>
 
       {/* Main Interactive Wiper Visualizer */}
-      <div className="glass-panel rounded-2xl p-4 sm:p-6 border-emerald-500/25 relative overflow-hidden">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
-            <RotateCw className={`w-5 h-5 text-emerald-400 ${isWiping ? 'animate-spin' : ''}`} />
-            <h3 className="font-heading font-semibold text-lg text-zinc-100">
+            <RotateCw className={`w-5 h-5 text-blue-600 ${isWiping ? 'animate-spin' : ''}`} />
+            <h3 className="font-heading font-semibold text-lg text-slate-900">
               Interactive 3-Panel Wiper Array
             </h3>
           </div>
           <div className="flex items-center gap-2 font-mono text-xs">
-            <span className="text-zinc-400">PWM Servo GPIO 18</span>
-            <span className="text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded border border-emerald-500/30">
+            <span className="text-slate-500 font-medium">PWM Servo GPIO 18</span>
+            <span className="text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200 font-semibold">
               5V External Supply
             </span>
           </div>
         </div>
 
         {/* Visual 3-Panel Physical Representation with Animated Wiper */}
-        <div className="relative w-full h-56 sm:h-64 rounded-xl bg-gradient-to-b from-[#09160d] to-[#061009] border border-emerald-500/30 p-4 sm:p-6 overflow-hidden flex flex-col justify-between">
+        <div className="relative w-full h-56 sm:h-64 rounded-xl bg-slate-100 border border-slate-300 p-4 sm:p-6 overflow-hidden flex flex-col justify-between">
           {/* Top Rail Bar */}
-          <div className="w-full h-3 bg-zinc-800 rounded-full border border-zinc-700 relative">
-            <div className="absolute inset-y-0 left-0 bg-emerald-500/30 rounded-full w-full" />
+          <div className="w-full h-3 bg-slate-300 rounded-full border border-slate-400 relative">
+            <div className="absolute inset-y-0 left-0 bg-blue-500/20 rounded-full w-full" />
           </div>
 
-          {/* 3 Physical Mini Solar Panels Layout */}
+          {/* 3 Physical Solar Panels Layout */}
           <div className="grid grid-cols-3 gap-3 sm:gap-6 my-auto z-10">
             {panels.map((panel) => {
-              const isP2 = panel.id === 2;
               return (
                 <div
                   key={panel.id}
-                  className="relative h-28 sm:h-32 rounded-xl bg-[#0e2417] border-2 border-emerald-500/40 p-2 sm:p-3 flex flex-col justify-between shadow-lg"
+                  className="relative h-28 sm:h-32 rounded-xl bg-gradient-to-b from-blue-900 to-slate-900 border-2 border-blue-600 p-2 sm:p-3 flex flex-col justify-between shadow-md"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-emerald-300 font-bold">
+                    <span className="text-xs font-mono text-blue-200 font-bold">
                       {panel.name.split(' ')[0]}
                     </span>
-                    <span className="text-[9px] font-mono text-zinc-400 bg-black/60 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] font-mono text-amber-300 bg-black/60 px-1.5 py-0.5 rounded font-bold">
                       {panel.power_w.toFixed(2)}W
                     </span>
                   </div>
 
                   {/* Photovoltaic Cells */}
-                  <div className="grid grid-cols-3 grid-rows-2 gap-1 h-14 opacity-60">
+                  <div className="grid grid-cols-3 grid-rows-2 gap-1 h-14 opacity-50">
                     {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="bg-emerald-400/20 rounded-xs border border-emerald-400/30" />
+                      <div key={i} className="bg-blue-400/20 rounded-xs border border-blue-400/40" />
                     ))}
                   </div>
 
-                  {/* Surface condition indicator on Panel 2 */}
-                  {isP2 && inspection.preset?.svgType === 'leaf' && (
-                    <div className="absolute inset-0 bg-amber-950/40 rounded-xl flex items-center justify-center pointer-events-none">
-                      <span className="text-2xl animate-bounce">🍂</span>
-                    </div>
-                  )}
-
-                  {isP2 && inspection.preset?.isDamage && (
-                    <div className="absolute inset-0 bg-rose-950/60 rounded-xl flex items-center justify-center pointer-events-none border border-rose-500">
-                      <span className="text-xl">⚡</span>
-                    </div>
-                  )}
-
-                  <div className="text-[9px] text-center font-mono text-zinc-400">
+                  <div className="text-[10px] text-center font-mono text-blue-200/80 font-medium">
                     INA219 @ {panel.i2c_address}
                   </div>
                 </div>
@@ -131,25 +116,25 @@ export default function CleaningControlPage() {
             style={{ left: `${wiperPositionPercent}%` }}
           >
             {/* Wiper Motor Mount Carriage */}
-            <div className="w-5 h-5 rounded-md bg-emerald-500 border border-white shadow-glow-green flex items-center justify-center">
-              <RotateCw className={`w-3 h-3 text-black ${isWiping ? 'animate-spin' : ''}`} />
+            <div className="w-5 h-5 rounded-md bg-amber-400 border border-amber-600 shadow-md flex items-center justify-center">
+              <RotateCw className={`w-3 h-3 text-slate-900 ${isWiping ? 'animate-spin' : ''}`} />
             </div>
             {/* Wiper Soft Silicone Blade */}
-            <div className="w-2 flex-1 bg-gradient-to-b from-emerald-400 via-teal-300 to-cyan-400 rounded-full shadow-[0_0_12px_#34d399] opacity-95 my-1" />
+            <div className="w-2 flex-1 bg-amber-400 rounded-full shadow-md my-1 border border-amber-500" />
             {/* Wiper tip */}
-            <div className="w-4 h-2 bg-zinc-900 rounded-b-md border border-emerald-500/40" />
+            <div className="w-4 h-2 bg-blue-600 rounded-b-md border border-blue-700" />
           </div>
 
           {/* Bottom Guide Track */}
-          <div className="w-full h-2 bg-zinc-800 rounded-full border border-zinc-700 mt-2" />
+          <div className="w-full h-2 bg-slate-300 rounded-full border border-slate-400 mt-2" />
         </div>
 
         {/* Real-time Wiper Progress & Status Banner */}
-        <div className="mt-4 p-3 rounded-xl bg-black/40 border border-emerald-500/15 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2">
-            <Timer className="w-4 h-4 text-emerald-400" />
-            <span className="text-zinc-400">Current Actuator Status:</span>
-            <span className="font-mono font-bold text-emerald-300">
+            <Timer className="w-4 h-4 text-blue-600" />
+            <span className="text-slate-600 font-medium">Current Actuator Status:</span>
+            <span className="font-mono font-bold text-slate-900">
               {isWiping
                 ? `Wiping Sweep in Motion — ${cleaningState.progress}% Completed`
                 : isCooldown
@@ -160,9 +145,9 @@ export default function CleaningControlPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-zinc-400 text-[11px]">
+          <div className="flex items-center gap-2 font-mono text-slate-500 text-xs">
             <span>Last Sweep:</span>
-            <span className="text-zinc-200">{formatDateFull(cleaningState.lastCleaned)}</span>
+            <span className="text-slate-800 font-semibold">{formatDateFull(cleaningState.lastCleaned)}</span>
           </div>
         </div>
       </div>
@@ -170,26 +155,26 @@ export default function CleaningControlPage() {
       {/* Control Panels & Safety Engine */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Left: Actuation Controls */}
-        <div className="glass-panel rounded-2xl p-4 sm:p-5 border-emerald-500/20 space-y-4">
-          <h3 className="font-heading font-semibold text-base sm:text-lg text-zinc-100 flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-emerald-400" /> Wiper Command Center
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
+          <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-blue-600" /> Wiper Command Center
           </h3>
 
           {/* Auto-cleaning card */}
-          <div className="p-4 rounded-xl bg-[#0b1710] border border-emerald-500/15 flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-200 flex items-center justify-between">
             <div>
-              <div className="font-heading font-semibold text-zinc-200 text-sm">
+              <div className="font-heading font-semibold text-slate-900 text-sm">
                 Rule-Based Auto-Cleaning
               </div>
-              <div className="text-xs text-zinc-400 mt-0.5">
-                Automatically activates wiper when dust or leaves are detected above 85% confidence
+              <div className="text-xs text-slate-600 mt-0.5">
+                Automatically activates wiper when dust or debris are detected above 85% confidence
               </div>
             </div>
 
             <button
               onClick={toggleAutoCleaning}
               className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${
-                cleaningState.autoCleaningEnabled ? 'bg-emerald-600' : 'bg-zinc-800 border border-zinc-700'
+                cleaningState.autoCleaningEnabled ? 'bg-blue-600' : 'bg-slate-300 border border-slate-400'
               }`}
             >
               <div
@@ -207,10 +192,10 @@ export default function CleaningControlPage() {
               disabled={isWiping || isCooldown || isDamage}
               className={`w-full py-3 px-4 rounded-xl font-heading font-semibold text-sm flex items-center justify-center gap-2 transition ${
                 isDamage
-                  ? 'bg-rose-950/60 text-rose-300 border border-rose-500/40 cursor-not-allowed'
+                  ? 'bg-rose-100 text-rose-700 border border-rose-300 cursor-not-allowed'
                   : isWiping || isCooldown
-                  ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-glow-green'
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
               }`}
             >
               <RotateCw className={`w-4 h-4 ${isWiping ? 'animate-spin' : ''}`} />
@@ -228,14 +213,14 @@ export default function CleaningControlPage() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={emergencyStop}
-                className="py-2.5 px-3 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/40 font-heading text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                className="py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-heading text-xs font-semibold flex items-center justify-center gap-1.5 transition"
               >
-                <Power className="w-3.5 h-3.5 text-rose-400" /> Emergency Cut-Off
+                <Power className="w-3.5 h-3.5 text-rose-600" /> Emergency Cut-Off
               </button>
 
               <button
                 onClick={resetWiperFault}
-                className="py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 font-heading text-xs font-medium flex items-center justify-center gap-1.5 transition"
+                className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-heading text-xs font-semibold flex items-center justify-center gap-1.5 transition"
               >
                 Reset Fault / Standby
               </button>
@@ -244,97 +229,103 @@ export default function CleaningControlPage() {
         </div>
 
         {/* Right: Hardware Safety & Electrical Rules */}
-        <div className="glass-panel rounded-2xl p-4 sm:p-5 border-emerald-500/20 space-y-3">
-          <h3 className="font-heading font-semibold text-base sm:text-lg text-zinc-100 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" /> Hardware Safety Pre-Flight
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-3">
+          <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-blue-600" /> Hardware Safety Pre-Flight
           </h3>
 
           <div className="space-y-2 text-xs">
-            <div className="p-2.5 rounded-xl bg-black/40 border border-emerald-500/10 flex items-center justify-between">
-              <span className="text-zinc-300">Surface Damage Lock:</span>
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <span className="text-slate-700 font-medium">Surface Damage Lock:</span>
               {isDamage ? (
-                <span className="text-rose-400 font-semibold font-mono flex items-center gap-1">
+                <span className="text-rose-600 font-semibold font-mono flex items-center gap-1">
                   <ShieldAlert className="w-3.5 h-3.5" /> ENGAGED (Wiping Blocked)
                 </span>
               ) : (
-                <span className="text-emerald-400 font-semibold font-mono flex items-center gap-1">
+                <span className="text-blue-700 font-semibold font-mono flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" /> Clear (Safe to Wipe)
                 </span>
               )}
             </div>
 
-            <div className="p-2.5 rounded-xl bg-black/40 border border-emerald-500/10 flex items-center justify-between">
-              <span className="text-zinc-300">Dedicated 5V Supply Isolation:</span>
-              <span className="text-emerald-400 font-semibold font-mono">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <span className="text-slate-700 font-medium">Dedicated 5V Supply Isolation:</span>
+              <span className="text-blue-700 font-semibold font-mono">
                 Unified GND / Isolated 5V Rail
               </span>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-black/40 border border-emerald-500/10 flex items-center justify-between">
-              <span className="text-zinc-300">Servo Sweep Bounds:</span>
-              <span className="text-emerald-400 font-mono">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <span className="text-slate-700 font-medium">Servo Sweep Bounds:</span>
+              <span className="text-slate-900 font-mono font-semibold">
                 {settings.minSweepAngle}° min ➔ {settings.maxSweepAngle}° max
               </span>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-black/40 border border-emerald-500/10 flex items-center justify-between">
-              <span className="text-zinc-300">Overheat Cooldown Protection:</span>
-              <span className="text-emerald-400 font-mono">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <span className="text-slate-700 font-medium">Overheat Cooldown Protection:</span>
+              <span className="text-amber-600 font-mono font-semibold">
                 {settings.wiperCooldownSec}s mandatory pause
               </span>
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-xs text-emerald-200/90 leading-relaxed">
-            <strong>Power Safety Note:</strong> To prevent ESP32 brownout reboots during servo stall or inrush current, the SG90 is driven via an external regulated 5V power supply with a shared ground reference.
+          <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs text-slate-700 leading-relaxed font-medium">
+            <strong className="text-blue-900">Power Safety Note:</strong> To prevent ESP32 brownout reboots during servo inrush current, the SG90 is driven via an external regulated 5V power supply with a shared ground reference.
           </div>
         </div>
       </div>
 
       {/* Cleaning History Table */}
-      <div className="glass-panel rounded-2xl p-4 sm:p-5 border-emerald-500/20">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <History className="w-4 h-4 text-emerald-400" />
-            <h3 className="font-heading font-semibold text-base text-zinc-100">
+            <History className="w-4 h-4 text-blue-600" />
+            <h3 className="font-heading font-semibold text-base text-slate-900">
               Wiper Cleaning Audit Trail
             </h3>
           </div>
-          <span className="text-[10px] font-mono text-zinc-400">
-            Recorded Sweep Operations
+          <span className="text-xs font-mono text-slate-500 font-medium">
+            MongoDB Cleaning Logs
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-mono">
-            <thead>
-              <tr className="border-b border-emerald-500/15 text-zinc-400">
-                <th className="pb-2 font-medium">Log ID</th>
-                <th className="pb-2 font-medium">Timestamp</th>
-                <th className="pb-2 font-medium">Trigger Type</th>
-                <th className="pb-2 font-medium">Duration</th>
-                <th className="pb-2 font-medium">Sweep Arc</th>
-                <th className="pb-2 font-medium">Status</th>
-                <th className="pb-2 font-medium">Telemetry Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/60 text-zinc-300">
-              {cleaningState.history.map((log) => (
-                <tr key={log.id} className="hover:bg-emerald-950/20">
-                  <td className="py-2.5 font-bold text-emerald-400">{log.id}</td>
-                  <td className="py-2.5 text-zinc-400">{formatDateFull(log.timestamp)}</td>
-                  <td className="py-2.5 font-sans font-semibold text-zinc-200">{log.triggerType}</td>
-                  <td className="py-2.5">{log.durationMs} ms</td>
-                  <td className="py-2.5 text-emerald-300">{log.sweepAngle}</td>
-                  <td className="py-2.5">
-                    <StatusBadge status="completed" text={log.status} size="xs" />
-                  </td>
-                  <td className="py-2.5 text-zinc-400 font-sans text-[11px]">{log.notes}</td>
+        {cleaningState.history.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-xs font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            No cleaning sweep operations recorded yet. Execute a manual sweep or enable auto-cleaning.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-500">
+                  <th className="pb-2 font-semibold">Log ID</th>
+                  <th className="pb-2 font-semibold">Timestamp</th>
+                  <th className="pb-2 font-semibold">Trigger Type</th>
+                  <th className="pb-2 font-semibold">Duration</th>
+                  <th className="pb-2 font-semibold">Sweep Arc</th>
+                  <th className="pb-2 font-semibold">Status</th>
+                  <th className="pb-2 font-semibold">Telemetry Notes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {cleaningState.history.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50">
+                    <td className="py-2.5 font-bold text-blue-700">{log.id}</td>
+                    <td className="py-2.5 text-slate-500">{formatDateFull(log.timestamp)}</td>
+                    <td className="py-2.5 font-sans font-semibold text-slate-900">{log.triggerType}</td>
+                    <td className="py-2.5">{log.durationMs} ms</td>
+                    <td className="py-2.5 text-amber-600 font-bold">{log.sweepAngle}</td>
+                    <td className="py-2.5">
+                      <StatusBadge status="completed" text={log.status} size="xs" />
+                    </td>
+                    <td className="py-2.5 text-slate-600 font-sans text-xs">{log.notes}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

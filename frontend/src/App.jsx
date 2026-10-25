@@ -3,7 +3,6 @@ import { SolarGuardProvider, useSolarGuard } from './context/SolarGuardContext';
 import Header from './components/common/Header';
 import Sidebar from './components/common/Sidebar';
 import MobileNav from './components/common/MobileNav';
-import DemoBanner from './components/common/DemoBanner';
 import DevicePreviewModal from './components/common/DevicePreviewModal';
 
 import DashboardPage from './pages/DashboardPage';
@@ -48,10 +47,7 @@ function SolarGuardContent() {
   };
 
   const appUI = (
-    <div className="min-h-screen flex flex-col bg-[#080f0a] text-zinc-100 antialiased selection:bg-emerald-500 selection:text-black">
-      {/* Simulation / Demo Notice Banner */}
-      <DemoBanner />
-
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 antialiased selection:bg-amber-300 selection:text-slate-950">
       {/* Main Global Header */}
       <Header activeTab={activeTab} setActiveTab={setActiveTab} />
 

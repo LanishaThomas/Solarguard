@@ -32,9 +32,7 @@ export default function PanelMonitoringPage({ selectedPanelId = 1 }) {
   const { 
     panels, 
     telemetryHistory, 
-    settings, 
-    activeScenario, 
-    setActiveScenario 
+    settings 
   } = useSolarGuard();
 
   const [activePanelId, setActivePanelId] = useState(selectedPanelId || 1);
@@ -49,24 +47,24 @@ export default function PanelMonitoringPage({ selectedPanelId = 1 }) {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold font-heading text-zinc-100 tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-bold font-heading text-slate-900 tracking-tight">
             Panel Electrical Telemetry &amp; Shunt Analytics
           </h2>
-          <p className="text-xs sm:text-sm text-zinc-400">
+          <p className="text-xs sm:text-sm text-slate-600">
             High-precision voltage and current sensing per panel using dedicated INA219 modules
           </p>
         </div>
 
         {/* Panel Selector Tabs */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-zinc-900 border border-zinc-800 self-start">
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 border border-slate-200 self-start">
           {panels.map((p) => (
             <button
               key={p.id}
               onClick={() => setActivePanelId(p.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-heading font-medium transition ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-heading font-semibold transition ${
                 activePanelId === p.id
-                  ? 'bg-emerald-600 text-white shadow-glow-green'
-                  : 'text-zinc-400 hover:text-emerald-300'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Panel {p.id}
@@ -76,88 +74,90 @@ export default function PanelMonitoringPage({ selectedPanelId = 1 }) {
       </div>
 
       {/* Selected Panel Deep-Dive Card */}
-      <div className="glass-panel rounded-2xl p-4 sm:p-6 border-emerald-500/25 relative overflow-hidden">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm relative overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-heading font-bold text-lg">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 font-heading font-bold text-lg">
               P{currentPanel.id}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-heading font-bold text-lg sm:text-xl text-zinc-100">
+                <h3 className="font-heading font-bold text-lg sm:text-xl text-slate-900">
                   {currentPanel.name}
                 </h3>
                 <StatusBadge status={health.status} text={health.status.toUpperCase()} size="xs" />
               </div>
-              <div className="text-xs text-zinc-400 font-mono">
-                {currentPanel.channel} • I2C Address: <span className="text-emerald-400">{currentPanel.i2c_address}</span>
+              <div className="text-xs text-slate-500 font-mono font-medium">
+                {currentPanel.channel} • I2C Address: <span className="text-blue-700 font-bold">{currentPanel.i2c_address}</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-zinc-400 bg-zinc-900 px-2.5 py-1 rounded-lg border border-zinc-800">
-              Shunt Resistor: 0.100 Ω
+            <span className="text-xs font-mono text-slate-700 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 font-semibold">
+              Shunt Resistor: 0.100 Ω (R100)
             </span>
           </div>
         </div>
 
         {/* 4 Sensor Metric Cards for this panel */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-          <div className="p-3.5 rounded-xl bg-[#0b160f] border border-emerald-500/15">
-            <div className="text-[10px] text-zinc-400 uppercase font-mono">Bus Voltage</div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-zinc-100 mt-1">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="text-[10px] text-slate-500 uppercase font-mono font-bold">Bus Voltage</div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-blue-700 mt-1">
               {formatVoltage(currentPanel.voltage_v)}
             </div>
-            <div className="text-[10px] text-zinc-500 font-mono mt-1">Nominal: 5.5V open-circuit</div>
+            <div className="text-[10px] text-slate-500 font-mono mt-1 font-medium">Nominal: 5.5V open-circuit</div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[#0b160f] border border-emerald-500/15">
-            <div className="text-[10px] text-zinc-400 uppercase font-mono">Load Current</div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-zinc-100 mt-1">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="text-[10px] text-slate-500 uppercase font-mono font-bold">Load Current</div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-slate-900 mt-1">
               {formatCurrent(currentPanel.current_a)}
             </div>
-            <div className="text-[10px] text-emerald-400/80 font-mono mt-1">Shunt drop: {shuntMv} mV</div>
+            <div className="text-[10px] text-blue-700 font-mono mt-1 font-semibold">Shunt drop: {shuntMv} mV</div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[#0b160f] border border-emerald-500/15">
-            <div className="text-[10px] text-zinc-400 uppercase font-mono">Calculated Power</div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-300 mt-1">
+          <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-50 to-blue-50 border border-amber-200">
+            <div className="text-[10px] text-slate-600 uppercase font-mono font-bold">Calculated Power</div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-slate-900 mt-1">
               {formatPower(currentPanel.power_w)}
             </div>
-            <div className="text-[10px] text-zinc-500 font-mono mt-1">P = V × I</div>
+            <div className="text-[10px] text-amber-700 font-mono mt-1 font-bold">P = V × I</div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[#0b160f] border border-emerald-500/15">
-            <div className="text-[10px] text-zinc-400 uppercase font-mono">Thermal Backing</div>
-            <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-400 mt-1">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="text-[10px] text-slate-500 uppercase font-mono font-bold">Thermal Backing</div>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-amber-600 mt-1">
               {formatTemperature(currentPanel.temperature_c)}
             </div>
-            <div className="text-[10px] text-zinc-500 font-mono mt-1">Probe attached</div>
+            <div className="text-[10px] text-slate-500 font-mono mt-1 font-medium">DS18B20 1-Wire Probe</div>
           </div>
         </div>
 
         {/* Selected Panel History Chart */}
-        <div className="bg-black/40 rounded-xl p-3 border border-emerald-500/15">
+        <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-              <Activity className="w-3.5 h-3.5 text-emerald-400" /> Recent Output Trend — {currentPanel.name}
+            <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-blue-600" /> Output Trend — {currentPanel.name}
             </span>
-            <span className="text-[10px] font-mono text-zinc-500">[Simulated Time-Series]</span>
+            <span className="text-xs font-mono text-slate-500 font-medium">Real-Time Data</span>
           </div>
 
           <div className="h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={telemetryHistory} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#14261b" vertical={false} />
-                <XAxis dataKey="timeFormatted" stroke="#52525b" tick={{ fontSize: 9 }} tickLine={false} />
-                <YAxis stroke="#52525b" tick={{ fontSize: 9 }} tickLine={false} unit="W" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="timeFormatted" stroke="#64748b" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} />
+                <YAxis stroke="#64748b" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} unit="W" />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0c1a11',
-                    borderColor: 'rgba(52, 211, 153, 0.3)',
+                    backgroundColor: '#ffffff',
+                    borderColor: '#cbd5e1',
                     borderRadius: '8px',
                     fontSize: '11px',
+                    color: '#0f172a',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
                   }}
                   formatter={(val) => [`${Number(val).toFixed(3)} W`, `${currentPanel.name} Power`]}
                 />
@@ -165,9 +165,9 @@ export default function PanelMonitoringPage({ selectedPanelId = 1 }) {
                   type="monotone"
                   dataKey={`panel${currentPanel.id}_power`}
                   name={currentPanel.name}
-                  stroke="#34d399"
-                  strokeWidth={2}
-                  dot={{ r: 2, fill: '#34d399' }}
+                  stroke="#2563eb"
+                  strokeWidth={2.5}
+                  dot={{ r: 2, fill: '#2563eb' }}
                 />
               </LineChart>
             </ResponsiveContainer>

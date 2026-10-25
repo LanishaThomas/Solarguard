@@ -35,7 +35,7 @@ export default function MobileNav({ activeTab, setActiveTab }) {
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#07130b]/95 backdrop-blur-xl border-t border-emerald-500/20 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] select-none">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] select-none shadow-lg">
       <div className="grid grid-cols-6 gap-1 max-w-md mx-auto items-center">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -47,18 +47,18 @@ export default function MobileNav({ activeTab, setActiveTab }) {
               onClick={() => setActiveTab(item.id)}
               className={`relative flex flex-col items-center justify-center py-1.5 px-1 rounded-xl touch-target transition-all ${
                 isActive
-                  ? 'text-emerald-300 font-semibold bg-emerald-950/60 shadow-glow-green border border-emerald-500/30'
-                  : 'text-zinc-400 hover:text-emerald-300 hover:bg-emerald-950/20'
+                  ? 'text-blue-600 font-bold bg-blue-50 border border-blue-200 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
               <div className="relative">
                 <Icon
                   className={`w-5 h-5 transition-transform ${
-                    isActive ? 'scale-110 text-emerald-400' : 'text-zinc-400'
-                  } ${item.isPulse ? 'animate-spin text-cyan-400' : ''}`}
+                    isActive ? 'scale-110 text-blue-600' : 'text-slate-500'
+                  } ${item.isPulse ? 'animate-spin text-amber-500' : ''}`}
                 />
                 {item.badge && (
-                  <span className="absolute -top-1.5 -right-2.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center shadow">
+                  <span className="absolute -top-1.5 -right-2.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
                     {item.badge}
                   </span>
                 )}

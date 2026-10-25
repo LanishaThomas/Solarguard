@@ -10,20 +10,20 @@ export default function PeerComparisonWidget({ panels, settings }) {
   const minSunlight = settings.minSunlightThresholdW || 0.20;
 
   return (
-    <div className="glass-panel rounded-2xl p-4 sm:p-5 border-emerald-500/20">
+    <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <Scale className="w-4 h-4 text-emerald-400" />
-          <h3 className="font-heading font-semibold text-base sm:text-lg text-zinc-100">
+          <Scale className="w-4 h-4 text-blue-600" />
+          <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
             Peer-Panel Median Comparison Logic
           </h3>
         </div>
-        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+        <span className="text-xs font-mono text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200 font-semibold">
           Rule: Power &lt; {(dropRatio * 100).toFixed(0)}% of Median
         </span>
       </div>
 
-      <p className="text-xs text-zinc-400 mb-4">
+      <p className="text-xs text-slate-600 mb-4 font-medium">
         According to the SolarGuard specification, INA219 readings cannot distinguish between shadows, angle, or soiling. The system compares each panel against the <strong>median power ({formatPower(medianPower)})</strong> of all three panels under uniform daylight.
       </p>
 
@@ -39,24 +39,24 @@ export default function PeerComparisonWidget({ panels, settings }) {
               key={panel.id}
               className={`p-3.5 rounded-xl border transition ${
                 isBelowThreshold && isSunlightAdequate
-                  ? 'bg-amber-950/20 border-amber-500/40 shadow-[0_0_15px_-3px_rgba(245,158,11,0.2)]'
-                  : 'bg-[#0d1c13] border-emerald-500/15'
+                  ? 'bg-amber-50 border-amber-300'
+                  : 'bg-slate-50 border-slate-200'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="font-heading font-semibold text-xs text-zinc-200">
+                <span className="font-heading font-semibold text-xs text-slate-900">
                   {panel.name}
                 </span>
-                <span className="text-[10px] font-mono text-zinc-400">{panel.i2c_address}</span>
+                <span className="text-[10px] font-mono text-slate-500 font-semibold">{panel.i2c_address}</span>
               </div>
 
               <div className="flex items-baseline justify-between">
-                <span className="text-xl font-mono font-bold text-white">
+                <span className="text-xl font-mono font-bold text-slate-900">
                   {formatPower(panel.power_w)}
                 </span>
                 <span
-                  className={`text-xs font-mono font-semibold ${
-                    diff < 0 ? 'text-amber-400' : 'text-emerald-400'
+                  className={`text-xs font-mono font-bold ${
+                    diff < 0 ? 'text-amber-600' : 'text-blue-600'
                   }`}
                 >
                   {diff > 0 ? `+${diff.toFixed(1)}%` : `${diff.toFixed(1)}%`}
@@ -65,10 +65,10 @@ export default function PeerComparisonWidget({ panels, settings }) {
 
               {/* Progress bar vs median */}
               <div className="mt-2">
-                <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden border border-slate-300">
                   <div
-                    className={`h-full rounded-full ${
-                      isBelowThreshold && isSunlightAdequate ? 'bg-amber-500' : 'bg-emerald-500'
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      isBelowThreshold && isSunlightAdequate ? 'bg-amber-500' : 'bg-blue-600'
                     }`}
                     style={{
                       width: `${Math.min(100, Math.max(5, (panel.power_w / (medianPower * 1.3 || 1)) * 100))}%`,
@@ -77,11 +77,11 @@ export default function PeerComparisonWidget({ panels, settings }) {
                 </div>
               </div>
 
-              <div className="mt-2 pt-2 border-t border-zinc-800 text-[10px] flex items-center justify-between">
-                <span className="text-zinc-400">Diagnosis:</span>
+              <div className="mt-2 pt-2 border-t border-slate-200 text-xs flex items-center justify-between">
+                <span className="text-slate-500 font-medium">Diagnosis:</span>
                 <span
                   className={`font-semibold ${
-                    isBelowThreshold && isSunlightAdequate ? 'text-amber-300' : 'text-emerald-300'
+                    isBelowThreshold && isSunlightAdequate ? 'text-amber-700' : 'text-blue-700'
                   }`}
                 >
                   {isBelowThreshold && isSunlightAdequate ? 'Output Anomaly' : 'Peer Tolerant'}
@@ -92,10 +92,10 @@ export default function PeerComparisonWidget({ panels, settings }) {
         })}
       </div>
 
-      <div className="p-3 rounded-xl bg-black/40 border border-emerald-500/10 text-xs text-zinc-400 flex items-start gap-2">
-        <AlertTriangle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+      <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs text-slate-700 flex items-start gap-2 font-medium">
+        <AlertTriangle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
         <div>
-          <span className="text-zinc-200 font-semibold">Minimum Illumination Baseline: </span>
+          <span className="text-slate-900 font-semibold">Minimum Illumination Baseline: </span>
           The median comparison rule is dynamically gated when median power drops below <strong>{minSunlight}W</strong> (dusk/clouds), preventing simultaneous false alarms across all panels.
         </div>
       </div>

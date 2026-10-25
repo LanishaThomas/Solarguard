@@ -8,12 +8,12 @@ export default function QuickWiperCard({ cleaningState, triggerWipe, emergencySt
   const isStopped = cleaningState.status === 'stopped';
 
   return (
-    <div className="glass-panel rounded-2xl p-4 sm:p-5 border-emerald-500/20 flex flex-col justify-between">
+    <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm flex flex-col justify-between hover:shadow-md transition">
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <RotateCw className={`w-4 h-4 text-emerald-400 ${isWiping ? 'animate-spin' : ''}`} />
-            <h3 className="font-heading font-semibold text-base sm:text-lg text-zinc-100">
+            <RotateCw className={`w-4 h-4 text-blue-600 ${isWiping ? 'animate-spin' : ''}`} />
+            <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
               Cleaning Mechanism
             </h3>
           </div>
@@ -21,23 +21,23 @@ export default function QuickWiperCard({ cleaningState, triggerWipe, emergencySt
         </div>
 
         {/* Cleaning State Status Box */}
-        <div className="bg-black/40 rounded-xl p-3 border border-emerald-500/10 mb-4">
+        <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 mb-4">
           <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="text-zinc-400 font-medium">SG90 Wiper Actuator:</span>
-            <span className="font-mono text-emerald-400 text-xs">
+            <span className="text-slate-600 font-medium">SG90 Wiper Actuator:</span>
+            <span className="font-mono text-blue-700 font-semibold text-xs">
               {isWiping ? `Sweeping (${cleaningState.progress}%)` : isCooldown ? `Cooldown (${cleaningState.cooldownRemaining}s)` : 'Standby'}
             </span>
           </div>
 
           {/* Progress bar during wipe */}
-          <div className="w-full bg-zinc-900 rounded-full h-2.5 overflow-hidden border border-zinc-800">
+          <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden border border-slate-300">
             <div
               className={`h-full transition-all duration-150 ${
                 isWiping
-                  ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 shadow-glow-green'
+                  ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-blue-600'
                   : isCooldown
                   ? 'bg-amber-500'
-                  : 'bg-emerald-700/40'
+                  : 'bg-blue-600'
               }`}
               style={{
                 width: isWiping
@@ -49,22 +49,22 @@ export default function QuickWiperCard({ cleaningState, triggerWipe, emergencySt
             />
           </div>
 
-          <div className="flex justify-between text-[10px] font-mono text-zinc-500 mt-1.5">
+          <div className="flex justify-between text-[11px] font-mono text-slate-500 mt-1.5 font-medium">
             <span>Range: 15° - 165°</span>
             <span>Duration: 1.8s</span>
           </div>
         </div>
 
         {/* Automatic Cleaning Toggle */}
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 mb-4">
+        <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/60 border border-blue-100 mb-4">
           <div>
-            <div className="text-xs font-semibold text-zinc-200">Auto-Cleaning (ML Triggered)</div>
-            <div className="text-[10px] text-zinc-400">Wipe when dust or leaves are detected</div>
+            <div className="text-xs font-semibold text-slate-900">Auto-Cleaning (ML Triggered)</div>
+            <div className="text-[11px] text-slate-600">Wipe when dust or leaves are detected</div>
           </div>
           <button
             onClick={toggleAutoCleaning}
             className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out ${
-              cleaningState.autoCleaningEnabled ? 'bg-emerald-600' : 'bg-zinc-800 border border-zinc-700'
+              cleaningState.autoCleaningEnabled ? 'bg-blue-600' : 'bg-slate-300 border border-slate-400'
             }`}
           >
             <div
@@ -82,10 +82,10 @@ export default function QuickWiperCard({ cleaningState, triggerWipe, emergencySt
           <button
             onClick={() => triggerWipe('Manual Dashboard Action')}
             disabled={isWiping || isCooldown}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-heading font-medium text-xs sm:text-sm transition-all shadow-glow-green ${
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-heading font-medium text-xs sm:text-sm transition-all shadow-sm ${
               isWiping || isCooldown
-                ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-500 text-white font-semibold'
             }`}
           >
             <RotateCw className={`w-4 h-4 ${isWiping ? 'animate-spin' : ''}`} />
@@ -96,17 +96,17 @@ export default function QuickWiperCard({ cleaningState, triggerWipe, emergencySt
 
           <button
             onClick={emergencyStop}
-            className="px-3 py-2.5 rounded-xl font-medium text-xs bg-rose-950/40 hover:bg-rose-950/70 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5"
+            className="px-3 py-2.5 rounded-xl font-medium text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1.5"
             title="Emergency Motor Stop"
           >
-            <Power className="w-3.5 h-3.5 text-rose-400" />
+            <Power className="w-3.5 h-3.5 text-rose-600" />
             <span className="hidden sm:inline">E-Stop</span>
           </button>
         </div>
 
         <button
           onClick={onNavigate}
-          className="w-full text-center text-[11px] text-emerald-400/90 hover:underline pt-1 block"
+          className="w-full text-center text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline pt-1 block"
         >
           View Wiper Visualizer &amp; Sweep Logs &rarr;
         </button>
@@ -114,3 +114,4 @@ export default function QuickWiperCard({ cleaningState, triggerWipe, emergencySt
     </div>
   );
 }
+

@@ -1,37 +1,26 @@
 import React, { useState } from 'react';
 import { useSolarGuard } from '../context/SolarGuardContext';
 import { 
-  Database, 
   Sliders, 
   Cpu, 
   RotateCw, 
   CheckCircle2, 
-  AlertTriangle, 
-  Key, 
-  RefreshCw, 
-  Layers, 
-  Eye, 
-  EyeOff,
-  Server,
-  Save
+  Save,
+  Database,
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
-import { MONGO_COLLECTIONS, MONGO_SCHEMAS_DOCS } from '../data/mongoSchemaDefinition';
 
 export default function SettingsPage() {
   const { 
     settings, 
-    setSettings, 
-    isDemoMode, 
-    setIsDemoMode, 
-    activeScenario, 
-    setActiveScenario 
+    setSettings,
+    modelStatus,
+    backendUrl
   } = useSolarGuard();
 
   const [localSettings, setLocalSettings] = useState(settings);
-  const [showMongoUri, setShowMongoUri] = useState(false);
-  const [mongoTestStatus, setMongoTestStatus] = useState(null); // 'testing' | 'success' | 'error'
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [selectedSchemaDoc, setSelectedSchemaDoc] = useState(MONGO_SCHEMAS_DOCS[0]);
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -40,170 +29,85 @@ export default function SettingsPage() {
     setTimeout(() => setSavedSuccess(false), 2500);
   };
 
-  const testMongoConnection = () => {
-    setMongoTestStatus('testing');
-    setTimeout(() => {
-      setMongoTestStatus('success');
-    }, 900);
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold font-heading text-zinc-100 tracking-tight">
-            System Configuration &amp; MongoDB Architecture
-          </h2>
-          <p className="text-xs sm:text-sm text-zinc-400">
-            Configure telemetry rules, safety thresholds, ESP32 gateway endpoints, and MongoDB database schemas
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+            <h2 className="text-xl sm:text-2xl font-bold font-heading text-slate-900 tracking-tight">
+              System &amp; Actuator Configuration
+            </h2>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
+            Configure telemetry rules, safety thresholds, and SG90 servo sweep parameters
           </p>
         </div>
 
         {savedSuccess && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950 border border-emerald-500/40 text-emerald-300 text-xs font-mono animate-fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Settings saved successfully
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium animate-fade-in shadow-sm">
+            <CheckCircle2 className="w-4 h-4 text-blue-600" /> Settings saved successfully
           </div>
         )}
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Section 1: MongoDB Database Configuration */}
-        <div className="glass-panel rounded-2xl p-4 sm:p-6 border-emerald-500/25 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/15 pb-3">
-            <div className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-emerald-400" />
-              <h3 className="font-heading font-semibold text-lg text-zinc-100">
-                MongoDB Database Integration
-              </h3>
+      {/* Backend & Database Status Card */}
+      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-blue-600" />
+            <h3 className="font-heading font-semibold text-base text-slate-900">
+              Backend &amp; Database Architecture
+            </h3>
+          </div>
+          <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+            Secure Backend Code
+          </span>
+        </div>
+        
+        <p className="text-xs text-slate-600 leading-relaxed">
+          MongoDB is securely connected directly inside the backend code. Database credentials and connection strings are stored privately in <span className="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">.env</span> (<code className="text-blue-700">MONGODB_URI</code>) and are never exposed to browser clients.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/80 flex items-center justify-between text-xs">
+            <div>
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">Inference Backend</div>
+              <div className="font-mono text-slate-900 font-bold text-xs mt-0.5 truncate">{backendUrl}</div>
             </div>
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded border border-emerald-500/30">
-              Database: {localSettings.mongoDbName || 'solarguard_db'}
+            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+              modelStatus.isConnected ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {modelStatus.isConnected ? 'ONLINE' : 'OFFLINE'}
             </span>
           </div>
 
-          <p className="text-xs text-zinc-400">
-            SolarGuard uses MongoDB for time-series sensor telemetry, computer-vision inspection snapshots, persistent safety alarms, and servo maintenance logs.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center justify-between text-xs">
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                MongoDB Connection String (URI)
-              </label>
-              <div className="relative">
-                <input
-                  type={showMongoUri ? 'text' : 'password'}
-                  value={localSettings.mongoUri}
-                  onChange={(e) =>
-                    setLocalSettings({ ...localSettings, mongoUri: e.target.value })
-                  }
-                  className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500 pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowMongoUri(!showMongoUri)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200"
-                >
-                  {showMongoUri ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Configure your MongoDB connection string or provide via VITE_MONGODB_URI
-              </p>
+              <div className="text-[11px] font-semibold text-amber-800 uppercase tracking-wider font-mono">MongoDB Storage</div>
+              <div className="font-mono text-slate-800 font-bold text-xs mt-0.5">Configured via .env</div>
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                Target Database Name
-              </label>
-              <input
-                type="text"
-                value={localSettings.mongoDbName}
-                onChange={(e) =>
-                  setLocalSettings({ ...localSettings, mongoDbName: e.target.value })
-                }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
-              />
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Default: solarguard_db
-              </p>
-            </div>
-          </div>
-
-          {/* Test MongoDB Button */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <button
-              type="button"
-              onClick={testMongoConnection}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-medium transition"
-            >
-              <Server className="w-3.5 h-3.5" />
-              <span>
-                {mongoTestStatus === 'testing'
-                  ? 'Testing MongoDB Ping...'
-                  : 'Test MongoDB Connection'}
-              </span>
-            </button>
-
-            {mongoTestStatus === 'success' && (
-              <span className="text-xs font-mono text-emerald-400 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                Connection verified. Collections indexed &amp; ready for backend.
-              </span>
-            )}
-          </div>
-
-          {/* MongoDB Collections & Schemas Viewer */}
-          <div className="pt-3 border-t border-emerald-500/10">
-            <div className="text-xs font-semibold text-zinc-300 mb-2">
-              Configured MongoDB Collections:
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-              {MONGO_SCHEMAS_DOCS.map((schema) => (
-                <button
-                  type="button"
-                  key={schema.collection}
-                  onClick={() => setSelectedSchemaDoc(schema)}
-                  className={`p-2.5 rounded-xl text-left border text-xs font-mono transition ${
-                    selectedSchemaDoc.collection === schema.collection
-                      ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-200 shadow-glow-green'
-                      : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  <div className="font-bold truncate text-[11px]">{schema.collection}</div>
-                  <div className="text-[9px] text-zinc-500 truncate mt-0.5">
-                    {schema.indexes.length} Indexes
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Selected Collection Schema Inspection */}
-            <div className="p-3 rounded-xl bg-black/60 border border-emerald-500/15 font-mono text-[11px] space-y-1.5">
-              <div className="flex items-center justify-between text-zinc-400">
-                <span>Collection: <strong className="text-emerald-300">{selectedSchemaDoc.collection}</strong></span>
-                <span className="text-zinc-500">{selectedSchemaDoc.description}</span>
-              </div>
-              <pre className="text-emerald-400/90 overflow-x-auto p-2 bg-[#061009] rounded-lg text-[10px] leading-relaxed max-h-40">
-                {JSON.stringify(selectedSchemaDoc.sampleDocument, null, 2)}
-              </pre>
-            </div>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
+              MONGODB_URI
+            </span>
           </div>
         </div>
+      </div>
 
-        {/* Section 2: Sensor Thresholds & Anomaly Rules */}
-        <div className="glass-panel rounded-2xl p-4 sm:p-6 border-emerald-500/25 space-y-4">
-          <div className="flex items-center gap-2 border-b border-emerald-500/15 pb-3">
-            <Sliders className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-heading font-semibold text-lg text-zinc-100">
-              Sensor Anomaly Rules &amp; Peer Comparison Thresholds
+      <form onSubmit={handleSave} className="space-y-5">
+        {/* Section 1: Sensor Thresholds & Anomaly Rules */}
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <Sliders className="w-5 h-5 text-blue-600" />
+            <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
+              Sensor Anomaly Rules &amp; Peer Comparison
             </h3>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 DS18B20 Temp Alert (°C)
               </label>
               <input
@@ -217,13 +121,13 @@ export default function SettingsPage() {
                     tempAlertThresholdC: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">Default: 55°C (Panel test limit)</p>
+              <p className="text-[11px] text-slate-500 mt-1">Default: 55°C</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Peer Drop Ratio Threshold
               </label>
               <input
@@ -238,15 +142,15 @@ export default function SettingsPage() {
                     peerDropThreshold: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">
+              <p className="text-[11px] text-slate-500 mt-1">
                 0.70 = Flag if &lt; 70% of peer median
               </p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Consecutive Alert Samples
               </label>
               <input
@@ -260,15 +164,15 @@ export default function SettingsPage() {
                     consecutiveAlertSamples: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Filters noise (Requires 5 consecutive drops)
+              <p className="text-[11px] text-slate-500 mt-1">
+                Noise filter (5 consecutive drops)
               </p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Min Sunlight Baseline (W)
               </label>
               <input
@@ -283,27 +187,27 @@ export default function SettingsPage() {
                     minSunlightThresholdW: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Gates rule at dusk / under clouds (0.2W)
+              <p className="text-[11px] text-slate-500 mt-1">
+                Gates rule at dusk / dark (0.2W)
               </p>
             </div>
           </div>
         </div>
 
-        {/* Section 3: SG90 Wiper Parameters */}
-        <div className="glass-panel rounded-2xl p-4 sm:p-6 border-emerald-500/25 space-y-4">
-          <div className="flex items-center gap-2 border-b border-emerald-500/15 pb-3">
-            <RotateCw className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-heading font-semibold text-lg text-zinc-100">
+        {/* Section 2: SG90 Wiper Parameters */}
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <RotateCw className="w-5 h-5 text-amber-500" />
+            <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
               SG90 Wiper Actuator Calibration
             </h3>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Sweep Duration (ms)
               </label>
               <input
@@ -318,13 +222,13 @@ export default function SettingsPage() {
                     wiperDurationMs: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">Default: 1800 ms (Single sweep)</p>
+              <p className="text-[11px] text-slate-500 mt-1">Default: 1800 ms per sweep</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Mandatory Cooldown (seconds)
               </label>
               <input
@@ -338,16 +242,16 @@ export default function SettingsPage() {
                     wiperCooldownSec: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Protects SG90 motor gears &amp; thermal coils
+              <p className="text-[11px] text-slate-500 mt-1">
+                Protects SG90 servo motor from heat
               </p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                Auto-Clean ML Confidence Threshold
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Auto-Clean Confidence Threshold
               </label>
               <input
                 type="number"
@@ -361,27 +265,27 @@ export default function SettingsPage() {
                     autoCleanMinConfidence: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Requires &gt;= 85% confidence before auto-wipe
+              <p className="text-[11px] text-slate-500 mt-1">
+                Requires &gt;= 85% confidence to trigger auto-wipe
               </p>
             </div>
           </div>
         </div>
 
-        {/* Section 4: ESP32 Hardware Endpoint & Simulation Settings */}
-        <div className="glass-panel rounded-2xl p-4 sm:p-6 border-emerald-500/25 space-y-4">
-          <div className="flex items-center gap-2 border-b border-emerald-500/15 pb-3">
-            <Cpu className="w-5 h-5 text-emerald-400" />
-            <h3 className="font-heading font-semibold text-lg text-zinc-100">
-              Hardware Gateway &amp; Simulation Environment
+        {/* Section 3: Hardware Gateway Settings */}
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <Cpu className="w-5 h-5 text-blue-600" />
+            <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
+              Hardware Gateway Endpoint
             </h3>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 ESP32 REST Gateway Endpoint
               </label>
               <input
@@ -390,15 +294,16 @@ export default function SettingsPage() {
                 onChange={(e) =>
                   setLocalSettings({ ...localSettings, esp32Endpoint: e.target.value })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                placeholder="http://192.168.1.150"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
-              <p className="text-[10px] text-zinc-500 mt-1">
-                Local Wi-Fi IP address of the ESP32 micro-controller
+              <p className="text-[11px] text-slate-500 mt-1">
+                IP address of the physical ESP32 micro-controller on your Wi-Fi
               </p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Telemetry Polling Interval
               </label>
               <select
@@ -409,12 +314,13 @@ export default function SettingsPage() {
                     telemetryIntervalMs: Number(e.target.value),
                   })
                 }
-                className="w-full bg-[#07130a] border border-emerald-500/30 rounded-xl px-3 py-2 text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
               >
                 <option value={1000}>1000 ms (Fast 1Hz)</option>
-                <option value={2500}>2500 ms (Default Recommended)</option>
-                <option value={5000}>5000 ms (Conserve Wi-Fi)</option>
+                <option value={2500}>2500 ms (Standard)</option>
+                <option value={5000}>5000 ms (Conserve bandwidth)</option>
               </select>
+              <p className="text-[11px] text-slate-500 mt-1">Rate of real sensor query requests</p>
             </div>
           </div>
         </div>
@@ -423,7 +329,7 @@ export default function SettingsPage() {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-heading font-semibold text-sm shadow-glow-green transition"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-heading font-semibold text-sm shadow-md transition"
           >
             <Save className="w-4 h-4" /> Save System Settings
           </button>

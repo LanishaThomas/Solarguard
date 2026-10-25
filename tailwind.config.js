@@ -8,30 +8,30 @@ export default {
   theme: {
     extend: {
       colors: {
-        solar: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
-          950: '#052e16',
+        solarYellow: {
+          50: '#fffbeb',
+          100: '#fef3c7',
+          200: '#fde68a',
+          300: '#fcd34d',
+          400: '#fbbf24',
+          500: '#f59e0b',
+          600: '#d97706',
+          700: '#b45309',
+          800: '#92400e',
+          900: '#78350f',
         },
-        emeraldGlow: {
-          light: '#34d399',
-          DEFAULT: '#10b981',
-          dark: '#065f46',
+        solarBlue: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
         },
-        darkBg: {
-          DEFAULT: '#0b130e',
-          card: '#111e16',
-          border: '#1b3224',
-          hover: '#193021',
-        }
       },
       fontFamily: {
         heading: ['Outfit', 'sans-serif'],
@@ -42,9 +42,10 @@ export default {
         'edge50': '412px', // Motorola Edge 50 viewport width
       },
       boxShadow: {
-        'glow-green': '0 0 25px -5px rgba(34, 197, 94, 0.25)',
-        'glow-emerald': '0 0 35px -5px rgba(16, 185, 129, 0.35)',
-        'card-dark': '0 4px 20px -2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(34, 197, 94, 0.1)',
+        'glow-yellow': '0 0 25px -5px rgba(245, 158, 11, 0.3)',
+        'glow-blue': '0 0 25px -5px rgba(37, 99, 235, 0.25)',
+        'card-clean': '0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px 0 rgba(0, 0, 0, 0.04)',
+        'card-elevated': '0 10px 25px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04)',
       },
       animation: {
         'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
