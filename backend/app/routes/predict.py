@@ -21,10 +21,11 @@ def set_classifier(clf: MobileNetV3Classifier):
 @router.post("/predict")
 async def predict_surface(
     file: UploadFile = File(..., description="Solar panel image (JPEG/PNG/WebP)"),
-    threshold: Optional[float] = Query(None, description="Custom confidence threshold override (0.1 to 0.95)")
+    threshold: Optional[float] = Query(None, description="Custom confidence threshold override (0.1 to 0.95)"),
+    engine: Optional[str] = Query("auto", description="Inference engine: 'groq', 'mobilenetv3', or 'auto'")
 ):
     """
-    Classifies a solar panel image using fine-tuned MobileNetV3-Small.
+    Classifies a solar panel image using fine-tuned MobileNetV3-Small or Groq Vision API.
     Outputs image classification probabilities for crack, dust, bird_droppings, snow, and clean.
     Enforces automatic wiper safety lockout when damage is suspected.
     """
@@ -52,23 +53,60 @@ async def predict_surface(
         contents = await file.read()
         image = load_image_from_bytes(contents)
 
-        # 1. Primary high-accuracy visual inference via Groq vision (if API key configured)
+        selected_engine = (engine or "auto").lower().strip()
         result = None
-        try:
-            from ..model.groq_vision import classify_surface_with_groq
-            result = classify_surface_with_groq(image=image)
-        except Exception as groq_err:
-            logger.warning(f"Groq vision attempt skipped or failed: {groq_err}")
 
-        # 2. Seamless local MobileNetV3 fallback if Groq not configured or offline
-        if result is None:
+        # 1. User selected Groq Vision explicitly
+        if selected_engine in ["groq", "cloud"]:
+            try:
+                from ..model.groq_vision import classify_surface_with_groq
+                result = classify_surface_with_groq(image=image)
+                if result:
+                    result["engine_used"] = "Groq Vision Cloud AI (Qwen-27B)"
+                    result["engine_type"] = "groq"
+            except Exception as groq_err:
+                logger.warning(f"Groq vision error: {groq_err}")
+
+            if result is None:
+                # Fallback to local MobileNetV3 if Groq fails
+                if classifier_instance and classifier_instance.is_loaded:
+                    result = classifier_instance.predict(image=image, threshold_override=threshold)
+                    result["engine_used"] = "MobileNetV3 (Fallback: Groq unavailable)"
+                    result["engine_type"] = "mobilenetv3"
+
+        # 2. User selected Local MobileNetV3 ML Model explicitly
+        elif selected_engine in ["mobilenetv3", "local", "ml"]:
             if classifier_instance and classifier_instance.is_loaded:
                 result = classifier_instance.predict(image=image, threshold_override=threshold)
+                result["engine_used"] = "MobileNetV3 Neural Network (Local ML Model)"
+                result["engine_type"] = "mobilenetv3"
             else:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Classification engine is temporarily unavailable."
+                    detail="Local MobileNetV3 model is not loaded."
                 )
+
+        # 3. Auto engine selection (Groq if available, else MobileNetV3)
+        else:
+            try:
+                from ..model.groq_vision import classify_surface_with_groq
+                result = classify_surface_with_groq(image=image)
+                if result:
+                    result["engine_used"] = "Groq Vision Cloud AI (Qwen-27B)"
+                    result["engine_type"] = "groq"
+            except Exception as groq_err:
+                logger.warning(f"Groq vision attempt skipped: {groq_err}")
+
+            if result is None:
+                if classifier_instance and classifier_instance.is_loaded:
+                    result = classifier_instance.predict(image=image, threshold_override=threshold)
+                    result["engine_used"] = "MobileNetV3 Neural Network (Local ML Model)"
+                    result["engine_type"] = "mobilenetv3"
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Classification engine is temporarily unavailable."
+                    )
 
         # Log inspection record into MongoDB if connected
         try:

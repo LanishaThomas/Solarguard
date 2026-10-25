@@ -21,7 +21,8 @@ import {
   Minus,
   Zap,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Cpu
 } from 'lucide-react';
 import { formatDateFull } from '../utils/formatters';
 import StatusBadge from '../components/common/StatusBadge';
@@ -51,6 +52,8 @@ export default function CameraDetectionPage() {
   // Model Confidence Sensitivity (Balanced: 0.52 default, Strict: 0.65, Sensitive: 0.45)
   const [sensitivity, setSensitivity] = useState(0.52);
   const [selectedBenchmark, setSelectedBenchmark] = useState(null);
+  // Model Engine Selection: 'mobilenetv3' (local ML model) or 'groq' (Groq Vision API)
+  const [selectedEngine, setSelectedEngine] = useState('mobilenetv3');
 
   const [uploadedPreview, setUploadedPreview] = useState(null);
   const [uploadedBlob, setUploadedBlob] = useState(null);
@@ -230,7 +233,7 @@ export default function CameraDetectionPage() {
   };
 
   // Run live inference on current camera frame, uploaded image, or benchmark sample
-  const handleCaptureAndPredict = async (customBlob = null) => {
+  const handleCaptureAndPredict = async (customBlob = null, engineOverride = null) => {
     if (isClassifying) return; // Prevent concurrent calls
     if (!modelStatus.isConnected) {
       setInferenceError('AI inference cloud service is connecting. Please wait a moment and try again.');
@@ -240,6 +243,7 @@ export default function CameraDetectionPage() {
     setIsClassifying(true);
     setInferenceError(null);
     const startTime = performance.now();
+    const activeEngine = engineOverride || selectedEngine;
 
     try {
       let blob = customBlob;
@@ -260,11 +264,12 @@ export default function CameraDetectionPage() {
         throw new Error('Could not acquire an image frame from camera. Please ensure camera stream is running.');
       }
 
-      const result = await predictLiveImage(blob, sensitivity);
+      const result = await predictLiveImage(blob, sensitivity, activeEngine);
       const totalElapsedMs = Math.round(performance.now() - startTime);
       setLastLatency({
         roundtripMs: totalElapsedMs,
-        modelMs: result?.data?.inference_time_ms || 14
+        modelMs: result?.data?.inference_time_ms || 14,
+        engineUsed: result?.data?.engine_used || (activeEngine === 'groq' ? 'Groq Vision' : 'MobileNetV3')
       });
 
       if (!result?.success) {
@@ -289,7 +294,7 @@ export default function CameraDetectionPage() {
       const res = await fetch(sample.path);
       const blob = await res.blob();
       setUploadedBlob(blob);
-      await handleCaptureAndPredict(blob);
+      await handleCaptureAndPredict(blob, selectedEngine);
     } catch (err) {
       setInferenceError(`Failed to load benchmark sample: ${err.message}`);
     }
@@ -647,6 +652,43 @@ export default function CameraDetectionPage() {
               </div>
             )}
 
+            {/* AI Inference Engine Comparison Selector (ML Model vs Groq Vision) */}
+            <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                <Cpu className="w-4 h-4 text-blue-600" />
+                <span className="font-bold text-slate-900">Inference Engine:</span>
+                <span className="text-[11px] text-slate-500 font-mono">(Compare models)</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setSelectedEngine('mobilenetv3')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    selectedEngine === 'mobilenetv3'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                  title="Run edge MobileNetV3 PyTorch neural network"
+                >
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span>MobileNetV3 (ML Model)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEngine('groq')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    selectedEngine === 'groq'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                  title="Run Groq Vision Multi-Modal AI model via Groq API"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                  <span>Groq Vision API</span>
+                </button>
+              </div>
+            </div>
+
             {/* Confidence Sensitivity Level Selector */}
             <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs text-slate-700">
@@ -683,12 +725,16 @@ export default function CameraDetectionPage() {
                 className={`flex-1 py-2.5 px-4 rounded-xl font-heading font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-sm ${
                   isClassifying || (!useLiveCamera && !uploadedPreview)
                     ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : selectedEngine === 'groq'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
                 }`}
               >
                 <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300" />
                 <span>
-                  {isClassifying ? 'Analyzing Image Frame...' : 'Classify Current Frame with Model'}
+                  {isClassifying 
+                    ? 'Running Model Analysis...' 
+                    : `Classify Frame with ${selectedEngine === 'groq' ? 'Groq Vision API' : 'MobileNetV3 ML Model'}`}
                 </span>
               </button>
 
@@ -710,7 +756,9 @@ export default function CameraDetectionPage() {
             <div className="mt-4 pt-3 border-t border-slate-200">
               <div className="text-xs font-semibold text-slate-700 mb-2 flex items-center justify-between">
                 <span>Model Inspection Categories:</span>
-                <span className="text-[10px] text-blue-700 font-mono font-semibold">MobileNetV3 4-Class Architecture</span>
+                <span className="text-[10px] text-blue-700 font-mono font-semibold">
+                  {selectedEngine === 'groq' ? 'Groq Vision Multi-Modal AI Active' : 'MobileNetV3 4-Class Architecture Active'}
+                </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
@@ -805,6 +853,18 @@ export default function CameraDetectionPage() {
 
             {/* Prediction Details Card */}
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 font-mono text-xs">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <span className="text-slate-600 font-sans font-medium">Inference Engine:</span>
+                <span className={`px-2 py-0.5 rounded-md font-sans text-xs font-bold flex items-center gap-1 ${
+                  (currentPreset.engineType === 'groq' || selectedEngine === 'groq')
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-blue-50 text-blue-700 border border-blue-200'
+                }`}>
+                  <Cpu className="w-3 h-3" />
+                  {currentPreset.engineUsed || (selectedEngine === 'groq' ? 'Groq Vision API' : 'MobileNetV3 Neural Net')}
+                </span>
+              </div>
+
               <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                 <span className="text-slate-600 font-sans font-medium">Surface Condition:</span>
                 <span className="font-bold text-slate-900 font-sans text-sm">

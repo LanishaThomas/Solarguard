@@ -355,14 +355,21 @@ export function SolarGuardProvider({ children }) {
   }, [backendUrl]);
 
   // Live model prediction handler
-  const predictLiveImage = async (imageBlob, threshold = null) => {
+  // Live model prediction handler (supports engine: 'mobilenetv3', 'groq', or 'auto')
+  const predictLiveImage = async (imageBlob, threshold = null, engine = 'mobilenetv3') => {
     try {
       const formData = new FormData();
       formData.append('file', imageBlob, 'capture.jpg');
 
-      const url = threshold
-        ? `${backendUrl}/api/predict?threshold=${encodeURIComponent(threshold)}`
-        : `${backendUrl}/api/predict`;
+      const params = new URLSearchParams();
+      if (threshold !== null && threshold !== undefined) {
+        params.append('threshold', threshold);
+      }
+      if (engine) {
+        params.append('engine', engine);
+      }
+      const queryStr = params.toString() ? `?${params.toString()}` : '';
+      const url = `${backendUrl}/api/predict${queryStr}`;
 
       const res = await fetch(url, {
         method: 'POST',
@@ -389,6 +396,11 @@ export function SolarGuardProvider({ children }) {
         timestamp: data.timestamp,
         svgType: data.primary_condition,
         isGenuineModelPrediction: true,
+        modelArchitecture: data.model_architecture,
+        engineUsed: data.engine_used,
+        engineType: data.engine_type,
+        device: data.device,
+        inferenceTimeMs: data.inference_time_ms,
       };
 
       setInspection((prev) => ({
