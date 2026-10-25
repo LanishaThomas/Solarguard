@@ -51,7 +51,6 @@ export default function CameraDetectionPage() {
 
   // Model Confidence Sensitivity (Balanced: 0.52 default, Strict: 0.65, Sensitive: 0.45)
   const [sensitivity, setSensitivity] = useState(0.52);
-  const [selectedBenchmark, setSelectedBenchmark] = useState(null);
 
   const [uploadedPreview, setUploadedPreview] = useState(null);
   const [uploadedBlob, setUploadedBlob] = useState(null);
@@ -225,7 +224,7 @@ export default function CameraDetectionPage() {
     });
   };
 
-  // Run live inference on current camera frame, uploaded image, or benchmark sample
+  // Run live inference on current camera frame or uploaded image
   const handleCaptureAndPredict = async (customBlob = null, engineOverride = null) => {
     if (isClassifying) return; // Prevent concurrent calls
     if (!modelStatus.isConnected) {
@@ -248,7 +247,7 @@ export default function CameraDetectionPage() {
           const res = await fetch(uploadedPreview);
           blob = await res.blob();
         } else {
-          throw new Error('Please snap a photo using your mobile camera, start the live stream, or choose a benchmark sample.');
+          throw new Error('Please snap a photo using your camera or start the live stream.');
         }
       }
 
@@ -271,24 +270,6 @@ export default function CameraDetectionPage() {
       setInferenceError(err.message || 'Inference failed');
     } finally {
       setIsClassifying(false);
-    }
-  };
-
-  // 1-Click Benchmark Test Runner for 5 authentic solar conditions
-  const testBenchmarkSample = async (sample) => {
-    try {
-      setSelectedBenchmark(sample.id);
-      setInferenceError(null);
-      if (useLiveCamera) {
-        stopCamera();
-      }
-      setUploadedPreview(sample.path);
-      const res = await fetch(sample.path);
-      const blob = await res.blob();
-      setUploadedBlob(blob);
-      await handleCaptureAndPredict(blob);
-    } catch (err) {
-      setInferenceError(`Failed to load benchmark sample: ${err.message}`);
     }
   };
 
@@ -720,7 +701,6 @@ export default function CameraDetectionPage() {
                   onClick={() => {
                     setUploadedPreview(null);
                     setUploadedBlob(null);
-                    setSelectedBenchmark(null);
                   }}
                   className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-mono font-semibold border border-slate-200 transition"
                 >
@@ -752,65 +732,7 @@ export default function CameraDetectionPage() {
               </div>
             </div>
 
-            {/* Quick Benchmark Test (5 Solar Panel Conditions) */}
-            <div className="mt-4 pt-3 border-t border-slate-200">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
-                <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                  <span>Quick Benchmark Test (5 Solar Panel Conditions)</span>
-                </div>
-                <span className="text-[11px] text-slate-500">
-                  Instant 1-click test of all model classes
-                </span>
-              </div>
 
-              {/* Indoor Testing Tip Banner */}
-              <div className="mb-3 p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
-                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Indoor Testing Note:</strong> This model is specialized for dark blue/black photovoltaic solar panel silicon cells. When testing indoors on a plain white wall or ceiling light, click any sample below to verify genuine classification on real panel conditions:
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                {[
-                  { id: 'clean', title: 'Clean Panel', path: '/samples/clean.jpg', badge: 'Nominal Clean', badgeCol: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-                  { id: 'dust', title: 'Dust Layer', path: '/samples/dust.jpg', badge: 'Wipe Allowed', badgeCol: 'bg-amber-50 text-amber-700 border-amber-200' },
-                  { id: 'bird', title: 'Bird Dropping', path: '/samples/bird_droppings.jpg', badge: 'Wipe Allowed', badgeCol: 'bg-amber-50 text-amber-700 border-amber-200' },
-                  { id: 'crack', title: 'Crack Fracture', path: '/samples/crack.jpg', badge: 'Wiper Lockout', badgeCol: 'bg-rose-50 text-rose-700 border-rose-200' },
-                  { id: 'snow', title: 'Snow Drift', path: '/samples/snow.jpg', badge: 'Wipe Allowed', badgeCol: 'bg-blue-50 text-blue-700 border-blue-200' },
-                ].map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => testBenchmarkSample(s)}
-                    disabled={isClassifying}
-                    className={`group p-2 rounded-xl border text-left transition relative flex flex-col justify-between overflow-hidden ${
-                      selectedBenchmark === s.id && uploadedPreview === s.path
-                        ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20'
-                        : 'bg-slate-50 hover:bg-white hover:border-blue-300 border-slate-200'
-                    }`}
-                  >
-                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-slate-900 mb-1.5 border border-slate-200 relative">
-                      <img
-                        src={s.path}
-                        alt={s.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                        loading="lazy"
-                      />
-                      <span className={`absolute bottom-1 left-1 text-[9px] font-mono px-1 py-0.2 rounded border font-semibold ${s.badgeCol}`}>
-                        {s.badge}
-                      </span>
-                    </div>
-                    <div className="font-heading font-bold text-slate-900 text-[11px] leading-tight">
-                      {s.title}
-                    </div>
-                    <span className="text-[10px] text-blue-600 font-semibold group-hover:underline mt-1 flex items-center gap-1">
-                      Run Test &rarr;
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
