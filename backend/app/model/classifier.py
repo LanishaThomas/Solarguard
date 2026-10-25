@@ -180,6 +180,37 @@ class MobileNetV3Classifier:
             prob = float(sigmoid_probs[idx]) if idx < len(sigmoid_probs) else 0.0
             class_sigmoids[class_name] = round(prob, 4)
 
+        # Extract color spectrum and luminance:
+        import numpy as np
+        img_arr = np.array(image.convert("RGB")).astype(np.float32)
+        mean_lum = float(img_arr.mean())
+        std_lum = float(img_arr.std())
+        mean_r = float(img_arr[:, :, 0].mean())
+        mean_g = float(img_arr[:, :, 1].mean())
+        mean_b = float(img_arr[:, :, 2].mean())
+        warmth = mean_r - mean_b  # R - B: positive = warm/earthy/dust, negative = cool/snow/silicon
+
+        is_flat_white = mean_lum > 220 and std_lum < 25
+
+        # Physics-based spectral arbitration:
+        # 1. Snow has high albedo (mean_lum >= 135) and cool/neutral spectrum (warmth <= 12).
+        # 2. Dust has warm/earthy spectrum (warmth > 5 or R >= B) or medium/dark luminance (mean_lum < 135).
+        # 3. If a surface is warm (R > B + 5) or medium/dark (mean_lum < 135), it CANNOT be snow.
+        is_physically_snow = (mean_lum >= 135) and (warmth <= 12)
+
+        dust_prob = class_sigmoids.get("dust", 0.0)
+        snow_prob = class_sigmoids.get("snow", 0.0)
+        crack_prob = class_sigmoids.get("crack", 0.0)
+
+        # If snow neuron fired but surface is NOT physically snow (e.g. warm/earthy dust or indoor lighting):
+        if not is_physically_snow and snow_prob > 0.40:
+            if dust_prob >= 0.25 or warmth > 5:
+                promoted_dust = max(dust_prob, snow_prob, 0.68)
+                class_sigmoids["dust"] = round(promoted_dust, 4)
+                class_sigmoids["snow"] = 0.15
+            else:
+                class_sigmoids["snow"] = 0.15
+
         # Rank defect candidates
         defect_classes = [c for c in self.classes if c != "clean"]
         if defect_classes:
@@ -188,18 +219,6 @@ class MobileNetV3Classifier:
         else:
             best_defect_class = None
             best_defect_prob = 0.0
-
-        crack_prob = class_sigmoids.get("crack", 0.0)
-
-        # Out-of-distribution indoor / flat white background guard:
-        # In mobile testing, pointing camera at white walls, paper, ceilings, or laptop screens
-        # exhibits high uniform luminance (mean > 215, std < 35). A real solar panel (even with snow)
-        # has dark frame edges and texture. Flat white indoor scenes must not trigger snow.
-        import numpy as np
-        img_arr = np.array(image.convert("RGB"))
-        mean_lum = float(img_arr.mean())
-        std_lum = float(img_arr.std())
-        is_flat_white = mean_lum > 220 and std_lum < 25
 
         effective_threshold = active_thresh
         if is_flat_white:
@@ -213,7 +232,7 @@ class MobileNetV3Classifier:
         # Surface condition determination logic:
         if best_defect_class and best_defect_prob >= effective_threshold:
             # Defect confirmed on surface
-            if best_defect_class == "crack" or (crack_prob >= active_crack_thresh and crack_prob >= (best_defect_prob - 0.05)):
+            if best_defect_class == "crack" or (crack_prob >= 0.70 and crack_prob >= best_defect_prob):
                 primary_condition = "crack"
                 confidence = crack_prob
                 is_damage_detected = True

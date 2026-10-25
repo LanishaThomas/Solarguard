@@ -36,7 +36,10 @@ export function SolarGuardProvider({ children }) {
       if (saved) return saved.trim().replace(/\/+$/, '');
 
       const host = window.location.hostname;
-      if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.includes('vercel.app')) {
+      if (host && (host.includes('vercel.app') || !host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('192.168.'))) {
+        return 'https://solarguard-backend.onrender.com';
+      }
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
         return `http://${host}:8000`;
       }
     }
