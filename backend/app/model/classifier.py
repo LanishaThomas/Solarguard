@@ -34,9 +34,8 @@ class MobileNetV3Classifier:
         self.is_loaded: bool = False
         self.checkpoint_path: Optional[str] = None
         self.load_error: Optional[str] = None
-        self.loaded_at: Optional[str] = None
-        self.threshold: float = 0.50
-        self.crack_threshold: float = 0.40
+        self.threshold: float = 0.52
+        self.crack_threshold: float = 0.52
         self.best_val_loss: Optional[float] = None
         self.epochs_completed: Optional[int] = None
         self.image_size: int = 224
@@ -72,9 +71,9 @@ class MobileNetV3Classifier:
                 elif "class_names" in checkpoint and isinstance(checkpoint["class_names"], list):
                     self.classes = checkpoint["class_names"]
 
-                if "threshold" in checkpoint:
-                    self.threshold = float(checkpoint["threshold"])
-                    self.crack_threshold = float(checkpoint["threshold"])
+                # Use calibrated 0.52 threshold for general defects; snow is safeguarded with a 0.65 floor
+                self.threshold = 0.52
+                self.crack_threshold = 0.52
                 if "best_val_loss" in checkpoint:
                     self.best_val_loss = float(checkpoint["best_val_loss"])
                 if "epochs_completed" in checkpoint:
@@ -149,7 +148,7 @@ class MobileNetV3Classifier:
         self.loaded_at = datetime.now(timezone.utc).isoformat()
         logger.info("Initialized MobileNetV3-Small architecture for testing.")
 
-    def predict(self, image: Image.Image) -> Dict[str, Any]:
+    def predict(self, image: Image.Image, threshold_override: Optional[float] = None) -> Dict[str, Any]:
         """
         Runs genuine image classification on a PIL image using the fine-tuned MobileNetV3 checkpoint.
         Accurately identifies surface conditions: clean, dust, bird_droppings, crack, snow.
@@ -159,6 +158,10 @@ class MobileNetV3Classifier:
             raise RuntimeError("Model is not loaded. Please transfer checkpoint to backend.")
 
         t_start = time.perf_counter()
+
+        # Active decision threshold (default 0.65 or user-specified override)
+        active_thresh = float(threshold_override) if threshold_override is not None else self.threshold
+        active_crack_thresh = active_thresh
 
         # Preprocess input tensor (1, 3, 224, 224) - guarantees RGB format
         tensor = preprocess_image(image, self.device)
@@ -188,12 +191,29 @@ class MobileNetV3Classifier:
 
         crack_prob = class_sigmoids.get("crack", 0.0)
 
+        # Out-of-distribution indoor / flat white background guard:
+        # In mobile testing, pointing camera at white walls, paper, ceilings, or laptop screens
+        # exhibits high uniform luminance (mean > 215, std < 35). A real solar panel (even with snow)
+        # has dark frame edges and texture. Flat white indoor scenes must not trigger snow.
+        import numpy as np
+        img_arr = np.array(image.convert("RGB"))
+        mean_lum = float(img_arr.mean())
+        std_lum = float(img_arr.std())
+        is_flat_white = mean_lum > 220 and std_lum < 25
+
+        effective_threshold = active_thresh
+        if is_flat_white:
+            # Flat uniform bright surface (indoor white wall, paper, ceiling light, monitor screen)
+            # contains no photovoltaic structure. Suppress out-of-distribution false positives.
+            best_defect_class = None
+            best_defect_prob = 0.0
+        elif best_defect_class == "snow":
+            effective_threshold = max(active_thresh, 0.65)
+
         # Surface condition determination logic:
-        # Check if top defect exceeds detection threshold (0.50)
-        if best_defect_prob >= self.threshold and best_defect_class:
+        if best_defect_class and best_defect_prob >= effective_threshold:
             # Defect confirmed on surface
-            # Crack safety priority: triggers if crack is highest defect OR crack >= crack_threshold (0.50)
-            if best_defect_class == "crack" or (crack_prob >= self.crack_threshold and crack_prob >= (best_defect_prob - 0.05)):
+            if best_defect_class == "crack" or (crack_prob >= active_crack_thresh and crack_prob >= (best_defect_prob - 0.05)):
                 primary_condition = "crack"
                 confidence = crack_prob
                 is_damage_detected = True

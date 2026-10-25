@@ -352,12 +352,16 @@ export function SolarGuardProvider({ children }) {
   }, [backendUrl]);
 
   // Live model prediction handler
-  const predictLiveImage = async (imageBlob) => {
+  const predictLiveImage = async (imageBlob, threshold = null) => {
     try {
       const formData = new FormData();
       formData.append('file', imageBlob, 'capture.jpg');
 
-      const res = await fetch(`${backendUrl}/api/predict`, {
+      const url = threshold
+        ? `${backendUrl}/api/predict?threshold=${encodeURIComponent(threshold)}`
+        : `${backendUrl}/api/predict`;
+
+      const res = await fetch(url, {
         method: 'POST',
         body: formData,
       });

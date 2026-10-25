@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Query, HTTPException, status
 from fastapi.responses import JSONResponse
 
@@ -19,7 +20,8 @@ def set_classifier(clf: MobileNetV3Classifier):
 
 @router.post("/predict")
 async def predict_surface(
-    file: UploadFile = File(..., description="Solar panel image (JPEG/PNG/WebP)")
+    file: UploadFile = File(..., description="Solar panel image (JPEG/PNG/WebP)"),
+    threshold: Optional[float] = Query(None, description="Custom confidence threshold override (0.1 to 0.95)")
 ):
     """
     Classifies a solar panel image using fine-tuned MobileNetV3-Small.
@@ -50,7 +52,7 @@ async def predict_surface(
         image = load_image_from_bytes(contents)
 
         # Run genuine model inference
-        result = classifier_instance.predict(image=image)
+        result = classifier_instance.predict(image=image, threshold_override=threshold)
 
         # Log inspection record into MongoDB if connected
         try:

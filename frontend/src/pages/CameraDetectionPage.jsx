@@ -48,12 +48,15 @@ export default function CameraDetectionPage() {
   const [autoCaptureSeconds, setAutoCaptureSeconds] = useState(5); // default 5s, can be any integer >= 1
   const [autoCaptureCountdown, setAutoCaptureCountdown] = useState(5);
 
+  // Model Confidence Sensitivity (Balanced: 0.52 default, Strict: 0.65, Sensitive: 0.45)
+  const [sensitivity, setSensitivity] = useState(0.52);
+  const [selectedBenchmark, setSelectedBenchmark] = useState(null);
+
   const [uploadedPreview, setUploadedPreview] = useState(null);
   const [uploadedBlob, setUploadedBlob] = useState(null);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
   const mobileCameraInputRef = useRef(null);
 
@@ -158,13 +161,14 @@ export default function CameraDetectionPage() {
         return;
       }
       const video = videoRef.current;
-      if (video.videoWidth === 0 || video.videoHeight === 0) {
+      // Guard readyState: HAVE_CURRENT_DATA (2) or greater
+      if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
         resolve(null);
         return;
       }
 
-      // Draw onto 224x224 canvas directly matching MobileNetV3 resolution
-      const canvas = canvasRef.current || document.createElement('canvas');
+      // Draw onto 224x224 in-memory canvas directly matching MobileNetV3 resolution
+      const canvas = document.createElement('canvas');
       canvas.width = 224;
       canvas.height = 224;
       const ctx = canvas.getContext('2d');
@@ -211,8 +215,8 @@ export default function CameraDetectionPage() {
     });
   };
 
-  // Run live inference on current camera frame or uploaded image
-  const handleCaptureAndPredict = async () => {
+  // Run live inference on current camera frame, uploaded image, or benchmark sample
+  const handleCaptureAndPredict = async (customBlob = null) => {
     if (isClassifying) return; // Prevent concurrent calls
     if (!modelStatus.isConnected) {
       setInferenceError('AI inference cloud service is connecting. Please wait a moment and try again.');
@@ -224,36 +228,56 @@ export default function CameraDetectionPage() {
     const startTime = performance.now();
 
     try {
-      let blob = null;
-      if (useLiveCamera && videoRef.current) {
-        blob = await captureBlobFromVideo();
-      } else if (uploadedBlob) {
-        blob = uploadedBlob;
-      } else if (uploadedPreview) {
-        const res = await fetch(uploadedPreview);
-        blob = await res.blob();
-      } else {
-        throw new Error('Please snap a photo using your mobile camera or start the live stream.');
+      let blob = customBlob;
+      if (!blob) {
+        if (useLiveCamera && videoRef.current) {
+          blob = await captureBlobFromVideo();
+        } else if (uploadedBlob) {
+          blob = uploadedBlob;
+        } else if (uploadedPreview) {
+          const res = await fetch(uploadedPreview);
+          blob = await res.blob();
+        } else {
+          throw new Error('Please snap a photo using your mobile camera, start the live stream, or choose a benchmark sample.');
+        }
       }
 
       if (!blob) {
-        throw new Error('Could not acquire an image frame from camera.');
+        throw new Error('Could not acquire an image frame from camera. Please ensure camera stream is running.');
       }
 
-      const result = await predictLiveImage(blob);
+      const result = await predictLiveImage(blob, sensitivity);
       const totalElapsedMs = Math.round(performance.now() - startTime);
       setLastLatency({
         roundtripMs: totalElapsedMs,
-        modelMs: result.data?.inference_time_ms || 14
+        modelMs: result?.data?.inference_time_ms || 14
       });
 
-      if (!result.success) {
-        setInferenceError(result.error);
+      if (!result?.success) {
+        setInferenceError(result?.error);
       }
     } catch (err) {
       setInferenceError(err.message || 'Inference failed');
     } finally {
       setIsClassifying(false);
+    }
+  };
+
+  // 1-Click Benchmark Test Runner for 5 authentic solar conditions
+  const testBenchmarkSample = async (sample) => {
+    try {
+      setSelectedBenchmark(sample.id);
+      setInferenceError(null);
+      if (useLiveCamera) {
+        stopCamera();
+      }
+      setUploadedPreview(sample.path);
+      const res = await fetch(sample.path);
+      const blob = await res.blob();
+      setUploadedBlob(blob);
+      await handleCaptureAndPredict(blob);
+    } catch (err) {
+      setInferenceError(`Failed to load benchmark sample: ${err.message}`);
     }
   };
 
@@ -301,9 +325,6 @@ export default function CameraDetectionPage() {
 
   return (
     <div className="space-y-5">
-      {/* Hidden offscreen canvas for fast video downsampling */}
-      <canvas ref={canvasRef} className="hidden" />
-
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -612,10 +633,38 @@ export default function CameraDetectionPage() {
               </div>
             )}
 
+            {/* Confidence Sensitivity Level Selector */}
+            <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                <span className="font-bold text-slate-900">Detection Sensitivity:</span>
+                <span className="text-[11px] text-slate-500 font-mono">(Threshold: {sensitivity})</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {[
+                  { label: 'Balanced (0.52)', val: 0.52, tip: 'Default calibrated threshold' },
+                  { label: 'Strict (0.65)', val: 0.65, tip: 'High-confidence only, rejects false alarms' },
+                  { label: 'Sensitive (0.45)', val: 0.45, tip: 'High recall for low-light / dusk arrays' },
+                ].map((lvl) => (
+                  <button
+                    key={lvl.val}
+                    onClick={() => setSensitivity(lvl.val)}
+                    title={lvl.tip}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                      sensitivity === lvl.val
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                    }`}
+                  >
+                    {lvl.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Manual Trigger Bar */}
             <div className="mt-3 flex items-center justify-between gap-2">
               <button
-                onClick={handleCaptureAndPredict}
+                onClick={() => handleCaptureAndPredict()}
                 disabled={isClassifying || (!useLiveCamera && !uploadedPreview)}
                 className={`flex-1 py-2.5 px-4 rounded-xl font-heading font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-sm ${
                   isClassifying || (!useLiveCamera && !uploadedPreview)
@@ -634,6 +683,7 @@ export default function CameraDetectionPage() {
                   onClick={() => {
                     setUploadedPreview(null);
                     setUploadedBlob(null);
+                    setSelectedBenchmark(null);
                   }}
                   className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-mono font-semibold border border-slate-200 transition"
                 >
@@ -659,6 +709,66 @@ export default function CameraDetectionPage() {
                     <div className="font-heading font-semibold text-slate-900">{item.name}</div>
                     <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">{item.desc}</div>
                   </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Benchmark Test (5 Solar Panel Conditions) */}
+            <div className="mt-4 pt-3 border-t border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                  <span>Quick Benchmark Test (5 Solar Panel Conditions)</span>
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  Instant 1-click test of all model classes
+                </span>
+              </div>
+
+              {/* Indoor Testing Tip Banner */}
+              <div className="mb-3 p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Indoor Testing Note:</strong> This model is specialized for dark blue/black photovoltaic solar panel silicon cells. When testing indoors on a plain white wall or ceiling light, click any sample below to verify genuine classification on real panel conditions:
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {[
+                  { id: 'clean', title: 'Clean Panel', path: '/samples/clean.jpg', badge: 'Nominal Clean', badgeCol: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                  { id: 'dust', title: 'Dust Layer', path: '/samples/dust.jpg', badge: 'Wipe Allowed', badgeCol: 'bg-amber-50 text-amber-700 border-amber-200' },
+                  { id: 'bird', title: 'Bird Dropping', path: '/samples/bird_droppings.jpg', badge: 'Wipe Allowed', badgeCol: 'bg-amber-50 text-amber-700 border-amber-200' },
+                  { id: 'crack', title: 'Crack Fracture', path: '/samples/crack.jpg', badge: 'Wiper Lockout', badgeCol: 'bg-rose-50 text-rose-700 border-rose-200' },
+                  { id: 'snow', title: 'Snow Drift', path: '/samples/snow.jpg', badge: 'Wipe Allowed', badgeCol: 'bg-blue-50 text-blue-700 border-blue-200' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => testBenchmarkSample(s)}
+                    disabled={isClassifying}
+                    className={`group p-2 rounded-xl border text-left transition relative flex flex-col justify-between overflow-hidden ${
+                      selectedBenchmark === s.id && uploadedPreview === s.path
+                        ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20'
+                        : 'bg-slate-50 hover:bg-white hover:border-blue-300 border-slate-200'
+                    }`}
+                  >
+                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-slate-900 mb-1.5 border border-slate-200 relative">
+                      <img
+                        src={s.path}
+                        alt={s.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        loading="lazy"
+                      />
+                      <span className={`absolute bottom-1 left-1 text-[9px] font-mono px-1 py-0.2 rounded border font-semibold ${s.badgeCol}`}>
+                        {s.badge}
+                      </span>
+                    </div>
+                    <div className="font-heading font-bold text-slate-900 text-[11px] leading-tight">
+                      {s.title}
+                    </div>
+                    <span className="text-[10px] text-blue-600 font-semibold group-hover:underline mt-1 flex items-center gap-1">
+                      Run Test &rarr;
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>
