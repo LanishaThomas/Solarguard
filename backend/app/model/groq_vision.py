@@ -57,21 +57,21 @@ def classify_surface_with_groq(image: Image.Image) -> Optional[Dict[str, Any]]:
     t_start = time.perf_counter()
 
     try:
-        b64_img = image_to_base64_jpeg(image, max_dim=512)
+        b64_img = image_to_base64_jpeg(image, max_dim=384)
 
         prompt = (
-            "You are SolarGuard's optical solar panel surface defect inspector. "
-            "Examine this image or camera frame carefully and determine the surface condition.\n\n"
-            "CRITICAL DEFECT INSTRUCTIONS:\n"
-            "1. 'dust' - Any dust accumulation, sand particles, dirt layer, silt, powdery residue, soil smudges, haziness, or particulate soiling on the surface. Be sensitive to dust: if the panel, webcam view, or test surface has an earthy/brownish/yellowish hue, haziness, smudges, powdery film, or visible specks of dust, classify as 'dust'.\n"
-            "2. 'crack' - Structural fractures, cracked panel glass, shattered cells, micro-cracks, or dendritic breakage (CRITICAL DAMAGE).\n"
-            "3. 'bird_droppings' - Chalky white/grey localized splatters, bird poop, or opaque spots.\n"
-            "4. 'snow' - Solid snow drifts, frost, or ice accumulation covering solar cells.\n"
-            "5. 'clean' - Pristine, spotless, clear surface with zero visible dust, smudges, or defects.\n\n"
+            "You are SolarGuard's AI optical inspector for solar panel surface conditions and maintenance diagnostics. "
+            "Examine this solar panel image or camera frame carefully and determine the surface condition.\n\n"
+            "Classify into EXACTLY ONE of the following 5 categories based on visible physical evidence:\n"
+            "1. 'crack': Structural fractures, broken/cracked panel glass, shattered photovoltaic cells, impact cracks, hairline fractures, or fissures (CRITICAL DAMAGE).\n"
+            "2. 'bird_droppings': Bird feces, droppings, whitish/greyish splattered organic deposits, bird poop, or chalky fecal spots on the panel glass.\n"
+            "3. 'snow': Snow layer, snow coverage, frost, ice sheets, or white winter snow accumulation blocking photovoltaic cells.\n"
+            "4. 'dust': Soil dust accumulation, sand particles, brownish/earthy dirt layer, silt, or particulate soiling covering the panel.\n"
+            "5. 'clean': Clean, pristine, unobstructed, normal solar panel surface with no significant dirt, cracks, bird droppings, or snow.\n\n"
             "Return ONLY a JSON object with this exact structure:\n"
             "{\n"
-            "  \"condition\": \"dust\" | \"crack\" | \"bird_droppings\" | \"snow\" | \"clean\",\n"
-            "  \"confidence\": 0.70 to 0.99,\n"
+            "  \"condition\": \"crack\" | \"bird_droppings\" | \"snow\" | \"dust\" | \"clean\",\n"
+            "  \"confidence\": float between 0.70 and 0.99,\n"
             "  \"probabilities\": {\n"
             "    \"crack\": float (0.0 to 1.0),\n"
             "    \"dust\": float (0.0 to 1.0),\n"
@@ -79,7 +79,7 @@ def classify_surface_with_groq(image: Image.Image) -> Optional[Dict[str, Any]]:
             "    \"snow\": float (0.0 to 1.0),\n"
             "    \"clean\": float (0.0 to 1.0)\n"
             "  },\n"
-            "  \"reason\": \"short technical explanation\"\n"
+            "  \"reason\": \"brief 1-sentence technical explanation of visible surface evidence\"\n"
             "}"
         )
 
@@ -110,10 +110,10 @@ def classify_surface_with_groq(image: Image.Image) -> Optional[Dict[str, Any]]:
                             ]
                         }
                     ],
-                    temperature=0.1,
-                    max_tokens=300,
+                    temperature=0.0,
+                    max_tokens=220,
                     response_format={"type": "json_object"},
-                    timeout=6.0
+                    timeout=7.0
                 )
                 raw_content = chat_completion.choices[0].message.content
                 if raw_content:
@@ -128,19 +128,17 @@ def classify_surface_with_groq(image: Image.Image) -> Optional[Dict[str, Any]]:
             return None
 
         parsed = json.loads(raw_content)
-        condition = str(parsed.get("condition", "clean")).lower().strip()
-        if condition not in ["crack", "dust", "bird_droppings", "snow", "clean"]:
-            # Sanitize fallback
-            if "dust" in condition:
-                condition = "dust"
-            elif "crack" in condition:
-                condition = "crack"
-            elif "bird" in condition:
-                condition = "bird_droppings"
-            elif "snow" in condition:
-                condition = "snow"
-            else:
-                condition = "clean"
+        raw_cond = str(parsed.get("condition", "clean")).lower().strip()
+        if "crack" in raw_cond or "fracture" in raw_cond or "shatter" in raw_cond or "broken" in raw_cond:
+            condition = "crack"
+        elif "bird" in raw_cond or "poop" in raw_cond or "dropping" in raw_cond or "feces" in raw_cond:
+            condition = "bird_droppings"
+        elif "snow" in raw_cond or "frost" in raw_cond or "ice" in raw_cond:
+            condition = "snow"
+        elif "dust" in raw_cond or "sand" in raw_cond or "dirt" in raw_cond or "soiled" in raw_cond:
+            condition = "dust"
+        else:
+            condition = "clean"
 
         confidence = float(parsed.get("confidence", 0.92))
         confidence = max(0.50, min(0.99, confidence))

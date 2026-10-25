@@ -192,36 +192,16 @@ class MobileNetV3Classifier:
 
         is_flat_white = mean_lum > 220 and std_lum < 25
 
-        # Physics-based spectral arbitration:
-        # 1. Snow has high albedo (mean_lum >= 135) and cool/neutral spectrum (warmth <= 12).
-        # 2. Dust has warm/earthy spectrum (warmth > 5 or R >= B) or medium/dark luminance (mean_lum < 135).
-        # 3. If a surface is warm (R > B + 5) or medium/dark (mean_lum < 135), it CANNOT be snow.
-        is_physically_snow = (mean_lum >= 135) and (warmth <= 12)
+        # Physics-based spectral snow validation:
+        # Snow requires high albedo (mean_lum >= 130) and cool/neutral tint (warmth <= 8).
+        # If surface is dark or warm (e.g. indoor warm room lighting), it cannot physically be snow.
+        is_physically_snow = (mean_lum >= 130) and (warmth <= 8)
 
-        dust_prob = class_sigmoids.get("dust", 0.0)
-        snow_prob = class_sigmoids.get("snow", 0.0)
-        crack_prob = class_sigmoids.get("crack", 0.0)
+        # If snow neuron fired on a non-snow surface, suppress snow neuron cleanly without hijacking to dust:
+        if not is_physically_snow and class_sigmoids.get("snow", 0.0) > 0.35:
+            class_sigmoids["snow"] = round(min(class_sigmoids["snow"], 0.20), 4)
 
-        # If snow neuron fired but surface is NOT physically snow (e.g. warm/earthy dust or indoor lighting):
-        if not is_physically_snow and snow_prob > 0.40:
-            if dust_prob >= 0.25 or warmth > 5:
-                promoted_dust = max(dust_prob, snow_prob, 0.78)
-                class_sigmoids["dust"] = round(promoted_dust, 4)
-                class_sigmoids["snow"] = 0.15
-            else:
-                class_sigmoids["snow"] = 0.15
-
-        # Live camera dust sensitivity enhancement:
-        # In live webcam streams, indoor lighting compresses dust sigmoid to 0.25 - 0.45.
-        # If dust signal is present and surface is not blank flat white, promote dust if warmth > 2 or dust > crack & bird
-        if not is_flat_white and class_sigmoids.get("dust", 0.0) >= 0.25:
-            if warmth > 2 or (class_sigmoids.get("dust", 0.0) > class_sigmoids.get("crack", 0.0) and class_sigmoids.get("dust", 0.0) > class_sigmoids.get("bird_droppings", 0.0)):
-                class_sigmoids["dust"] = round(max(class_sigmoids["dust"], 0.78), 4)
-                if warmth > 4 and class_sigmoids.get("crack", 0.0) < 0.70:
-                    class_sigmoids["crack"] = round(min(class_sigmoids.get("crack", 0.0), 0.20), 4)
-
-
-        # Rank defect candidates
+        # Rank defect candidates naturally from raw neural network sigmoids:
         defect_classes = [c for c in self.classes if c != "clean"]
         if defect_classes:
             best_defect_class = max(defect_classes, key=lambda c: class_sigmoids.get(c, 0.0))
@@ -233,30 +213,25 @@ class MobileNetV3Classifier:
         effective_threshold = active_thresh
         if is_flat_white:
             # Flat uniform bright surface (indoor white wall, paper, ceiling light, monitor screen)
-            # contains no photovoltaic structure. Suppress out-of-distribution false positives.
+            # contains no photovoltaic structure.
             best_defect_class = None
             best_defect_prob = 0.0
-        elif best_defect_class == "snow":
-            effective_threshold = max(active_thresh, 0.65)
 
         # Surface condition determination logic:
         if best_defect_class and best_defect_prob >= effective_threshold:
             # Defect confirmed on surface
-            if best_defect_class == "crack" or (crack_prob >= 0.70 and crack_prob >= best_defect_prob):
-                primary_condition = "crack"
-                confidence = crack_prob
-                is_damage_detected = True
-                is_cleanable = False
+            primary_condition = best_defect_class
+            confidence = best_defect_prob
+            is_damage_detected = (best_defect_class == "crack")
+            is_cleanable = (best_defect_class in ["dust", "bird_droppings", "snow"])
+            meta = CLASS_METADATA.get(primary_condition, {})
+
+            if is_damage_detected:
                 wiper_action = "BLOCKED"
                 wiper_allowed = False
                 safety_status = "CRITICAL_DAMAGE_LOCK"
                 safety_message = "CRACK DETECTED: Automatic wiping is BLOCKED to prevent further glass fracture and abrasive degradation."
             else:
-                primary_condition = best_defect_class
-                confidence = best_defect_prob
-                is_damage_detected = False
-                is_cleanable = True
-                meta = CLASS_METADATA.get(primary_condition, {})
                 wiper_action = "WIPE_RECOMMENDED"
                 wiper_allowed = True
                 safety_status = "CLEANABLE_CONTAMINATION"

@@ -155,8 +155,9 @@ export default function CameraDetectionPage() {
     };
   }, []);
 
-  // High-fidelity client-side frame capture preserving aspect ratio and surface texture
-  // Preserves particulate dust, smudges, cracks, and defects without squashing or blurring
+  // High-fidelity client-side frame capture with center-square crop
+  // Matches the optical inspection reticle, eliminates room background clutter,
+  // and prevents widescreen 16:9 squashing so live video matches captured photo quality exactly
   const captureBlobFromVideo = useCallback(() => {
     return new Promise((resolve) => {
       if (!videoRef.current) {
@@ -170,28 +171,22 @@ export default function CameraDetectionPage() {
         return;
       }
 
-      // Preserve native aspect ratio (e.g. 16:9, 4:3) with high-detail limit (max 640px)
-      const maxDim = 640;
-      let width = video.videoWidth;
-      let height = video.videoHeight;
-      if (width > maxDim || height > maxDim) {
-        if (width > height) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-      }
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      // Extract the square center region matching the viewfinder overlay
+      const cropSize = Math.min(vw, vh);
+      const sx = Math.floor((vw - cropSize) / 2);
+      const sy = Math.floor((vh - cropSize) / 2);
 
+      const targetDim = 512;
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = targetDim;
+      canvas.height = targetDim;
       const ctx = canvas.getContext('2d');
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(video, 0, 0, width, height);
-      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.88);
+      ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, targetDim, targetDim);
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.90);
     });
   }, []);
 
@@ -538,15 +533,39 @@ export default function CameraDetectionPage() {
                 </div>
               )}
 
+              {/* Optical Reticle Target Overlay (Guides alignment for 1:1 square capture) */}
+              {useLiveCamera && (
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
+                  <div className="relative w-44 h-44 sm:w-56 sm:h-56 border-2 border-dashed border-amber-400/80 rounded-2xl flex flex-col items-center justify-between p-2 shadow-[0_0_20px_rgba(251,191,36,0.15)] bg-slate-950/10 backdrop-blur-[0.5px]">
+                    <div className="absolute -top-1.5 -left-1.5 w-4 h-4 border-t-2 border-l-2 border-amber-400" />
+                    <div className="absolute -top-1.5 -right-1.5 w-4 h-4 border-t-2 border-r-2 border-amber-400" />
+                    <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 border-b-2 border-l-2 border-amber-400" />
+                    <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 border-b-2 border-r-2 border-amber-400" />
+
+                    <div className="text-[10px] font-mono text-amber-300 font-bold tracking-wider bg-slate-950/80 px-2 py-0.5 rounded border border-amber-400/30">
+                      ALIGN SOLAR PANEL
+                    </div>
+                    <div className="w-4 h-4 border border-amber-400/60 rounded-full flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-ping" />
+                    </div>
+                    <div className="text-[9px] font-mono text-slate-300 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-700">
+                      512x512 High-Detail Crop
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Classifying Loading Overlay */}
               {isClassifying && (
-                <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-xs flex flex-col items-center justify-center gap-2 z-20">
+                <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 z-20">
                   <RotateCw className="w-8 h-8 text-amber-400 animate-spin" />
-                  <span className="text-xs font-mono font-semibold text-white">
-                    Running MobileNetV3 Neural Network...
+                  <span className="text-xs font-mono font-bold text-white">
+                    {selectedEngine === 'groq'
+                      ? 'Groq Vision Cloud AI (Qwen-27B)...'
+                      : 'Running MobileNetV3 Neural Network...'}
                   </span>
                   <span className="text-[10px] font-mono text-slate-300">
-                    High-speed 224x224 surface analysis
+                    High-precision optical surface defect analysis
                   </span>
                 </div>
               )}
@@ -686,6 +705,20 @@ export default function CameraDetectionPage() {
                   <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
                   <span>Groq Vision API</span>
                 </button>
+              </div>
+
+              <div className="w-full text-[11px] flex items-center justify-between text-slate-500 pt-1 border-t border-slate-200/60">
+                {selectedEngine === 'groq' ? (
+                  <span className="flex items-center gap-1 text-emerald-700 font-medium">
+                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                    <strong>Groq Cloud AI (Qwen-27B):</strong> Deep vision reasoning across all 5 classes (~3 req/min on free tier).
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-blue-700 font-medium">
+                    <Cpu className="w-3 h-3 text-blue-600" />
+                    <strong>MobileNetV3 (Local ML Model):</strong> Real-time neural network (0ms cloud latency, unlimited continuous streaming).
+                  </span>
+                )}
               </div>
             </div>
 

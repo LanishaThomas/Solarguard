@@ -67,11 +67,10 @@ async def predict_surface(
             except Exception as groq_err:
                 logger.warning(f"Groq vision error: {groq_err}")
 
-            if result is None:
-                # Fallback to local MobileNetV3 if Groq fails
+                # Fallback to local MobileNetV3 if Groq fails or rate limits
                 if classifier_instance and classifier_instance.is_loaded:
                     result = classifier_instance.predict(image=image, threshold_override=threshold)
-                    result["engine_used"] = "MobileNetV3 (Fallback: Groq unavailable)"
+                    result["engine_used"] = "MobileNetV3 (Fallback: Groq rate-limited or offline)"
                     result["engine_type"] = "mobilenetv3"
 
         # 2. User selected Local MobileNetV3 ML Model explicitly
