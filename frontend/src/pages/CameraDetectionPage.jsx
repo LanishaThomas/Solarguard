@@ -9,16 +9,12 @@ import {
   RotateCw, 
   ShieldCheck, 
   ShieldAlert, 
-  CheckCircle2, 
   AlertTriangle,
   History,
   Info,
   Layers,
   Smartphone,
-  Settings2,
-  X,
-  Radio,
-  Image as ImageIcon
+  Radio
 } from 'lucide-react';
 import { formatDateFull } from '../utils/formatters';
 import StatusBadge from '../components/common/StatusBadge';
@@ -30,8 +26,6 @@ export default function CameraDetectionPage() {
     cleaningState,
     modelStatus,
     predictLiveImage,
-    backendUrl,
-    setBackendUrl,
     checkBackendStatus,
   } = useSolarGuard();
 
@@ -41,8 +35,6 @@ export default function CameraDetectionPage() {
   const [inferenceError, setInferenceError] = useState(null);
   const [autoCaptureInterval, setAutoCaptureInterval] = useState(0); // 0 = off, 5, 10, 30
   const [uploadedPreview, setUploadedPreview] = useState(null);
-  const [showBackendModal, setShowBackendModal] = useState(false);
-  const [tempBackendUrl, setTempBackendUrl] = useState(backendUrl);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -54,7 +46,6 @@ export default function CameraDetectionPage() {
   const currentPreset = inspection.preset || {};
   const isCrack = currentPreset.isDamage;
   const isCleanable = currentPreset.isCleanable;
-  const hasResult = !!currentPreset.className && currentPreset.className !== 'clean';
 
   // Handle live webcam/mobile camera stream with device constraint fallback
   const startCamera = async () => {
@@ -126,7 +117,7 @@ export default function CameraDetectionPage() {
   // Run live inference on current camera frame or uploaded image
   const handleCaptureAndPredict = async () => {
     if (!modelStatus.isConnected) {
-      setInferenceError('FastAPI inference backend is not connected. Start the server at ' + backendUrl);
+      setInferenceError('AI inference cloud service is connecting. Please wait a moment and try again.');
       return;
     }
 
@@ -210,24 +201,12 @@ export default function CameraDetectionPage() {
           </p>
         </div>
 
-        {/* Model Backend Indicator & Camera Controls */}
+        {/* Model Cloud Status & Camera Controls */}
         <div className="flex flex-wrap items-center gap-2 self-start">
-          <button
-            onClick={() => {
-              setTempBackendUrl(backendUrl);
-              setShowBackendModal(true);
-            }}
-            title="Configure Backend Connection URL"
-            className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-medium flex items-center gap-1.5 transition ${
-              modelStatus.isConnected 
-                ? 'bg-blue-50 border-blue-200 text-blue-700 hover:border-blue-300' 
-                : 'bg-slate-100 border-slate-200 text-slate-600 hover:border-slate-300'
-            }`}
-          >
-            <span className={`w-2 h-2 rounded-full ${modelStatus.isConnected ? 'bg-blue-600' : 'bg-rose-500'}`} />
-            <span>FastAPI: {modelStatus.isConnected ? 'Online' : 'Offline'}</span>
-            <Settings2 className="w-3.5 h-3.5 text-slate-500 hover:text-slate-700 ml-0.5" />
-          </button>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-800 shadow-xs">
+            <span className={`w-2 h-2 rounded-full ${modelStatus.isConnected ? 'bg-blue-600 animate-pulse' : 'bg-amber-500'}`} />
+            <span>AI Cloud Model: {modelStatus.isConnected ? 'Connected' : 'Connecting'}</span>
+          </div>
 
           {/* Native Phone Camera Snap */}
           <input
@@ -277,79 +256,6 @@ export default function CameraDetectionPage() {
           </button>
         </div>
       </div>
-
-      {/* Backend Connection Config Modal */}
-      {showBackendModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 max-w-md w-full space-y-4 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2 font-heading">
-                <Settings2 className="w-4 h-4 text-blue-600" /> AI Backend Connection
-              </h3>
-              <button 
-                onClick={() => setShowBackendModal(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-slate-600">
-              Configure the SolarGuard FastAPI server URL. When connecting from your phone on the same Wi-Fi, use your local LAN IP (e.g. <span className="font-mono text-blue-700 font-semibold">http://10.239.45.122:8000</span>).
-            </p>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-mono font-semibold text-slate-700">FastAPI Server URL:</label>
-              <input
-                type="text"
-                value={tempBackendUrl}
-                onChange={(e) => setTempBackendUrl(e.target.value)}
-                placeholder="http://10.239.45.122:8000"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 outline-none focus:border-blue-500 focus:bg-white"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-mono font-bold">Quick Select:</span>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setTempBackendUrl('http://127.0.0.1:8000')}
-                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 transition"
-                >
-                  Localhost (127.0.0.1:8000)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTempBackendUrl('http://10.239.45.122:8000')}
-                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-mono text-blue-700 transition font-medium"
-                >
-                  Phone Wi-Fi (10.239.45.122:8000)
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setShowBackendModal(false)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setBackendUrl(tempBackendUrl);
-                  setShowBackendModal(false);
-                }}
-                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm"
-              >
-                Save &amp; Connect
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {cameraError && (
         <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
@@ -422,7 +328,7 @@ export default function CameraDetectionPage() {
                   className="w-full h-full object-contain bg-slate-950"
                 />
               ) : (
-                /* Clean standby state: No fake drawings */
+                /* Clean standby state */
                 <div className="relative w-full h-full flex flex-col items-center justify-center p-6 bg-slate-100 text-center">
                   <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center mb-3">
                     <Camera className="w-8 h-8 text-blue-600" />
