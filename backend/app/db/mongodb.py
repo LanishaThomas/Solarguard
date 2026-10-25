@@ -31,6 +31,14 @@ class MongoDBClient:
         self.connection_error: Optional[str] = None
 
     def connect(self) -> bool:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            from pathlib import Path
+            load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+        except Exception:
+            pass
+
         self.uri = os.getenv("MONGODB_URI")
         self.db_name = os.getenv("MONGODB_DB_NAME", "solarguard_db")
 

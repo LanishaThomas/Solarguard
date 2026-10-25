@@ -52,7 +52,9 @@ app = FastAPI(
 )
 
 # CORS configuration for React frontend communication
-if "*" in CORS_ORIGINS or not CORS_ORIGINS:
+allow_all = "*" in CORS_ORIGINS or not CORS_ORIGINS
+
+if allow_all:
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=r"^https?://.*$",
@@ -64,6 +66,7 @@ else:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|.*\.vercel\.app)(:\d+)?$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -74,6 +77,16 @@ else:
 app.include_router(health_router)
 app.include_router(predict_router)
 app.include_router(info_router)
+
+@app.get("/", tags=["Root"])
+@app.head("/", tags=["Root"])
+def root_endpoint():
+    return {
+        "service": "SolarGuard AI Inference API",
+        "status": "online",
+        "docs": "/docs",
+        "health": "/health"
+    }
 
 @app.get("/api/db/status", tags=["Database"])
 def get_db_status():

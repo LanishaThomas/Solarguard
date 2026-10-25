@@ -1,6 +1,15 @@
 import os
 from pathlib import Path
 
+# Load .env file automatically
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
+except Exception:
+    pass
+
 # Base directories
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODELS_DIR = BASE_DIR / "models"
@@ -19,6 +28,13 @@ CRACK_CONFIDENCE_THRESHOLD = float(os.getenv("CRACK_THRESHOLD", "0.40"))  # Stri
 # Server configuration
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+def normalize_origin(orig: str) -> str:
+    orig = orig.strip()
+    if orig == "*" or orig.startswith("http://") or orig.startswith("https://"):
+        return orig.rstrip("/")
+    return f"https://{orig.rstrip('/')}"
+
 cors_env = os.getenv("CORS_ORIGINS", "*")
-CORS_ORIGINS = [orig.strip() for orig in cors_env.split(",") if orig.strip()]
+CORS_ORIGINS = [normalize_origin(orig) for orig in cors_env.split(",") if orig.strip()]
+
 
