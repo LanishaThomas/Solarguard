@@ -52,12 +52,12 @@ function SolarGuardContent() {
       <Header activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Main Body with Sidebar + Content */}
-      <div className="flex-1 flex max-w-[1600px] w-full mx-auto">
+      <div className="flex-1 flex max-w-[1600px] w-full mx-auto items-start">
         {/* Desktop Sidebar Navigation */}
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 p-3 edge50:p-4 sm:p-6 lg:p-8 pb-24 lg:pb-10 max-w-full overflow-x-hidden">
+        <main className="flex-1 p-3 edge50:p-4 sm:p-6 lg:p-8 pb-24 lg:pb-10 max-w-full overflow-x-hidden min-w-0">
           {renderActivePage()}
         </main>
       </div>

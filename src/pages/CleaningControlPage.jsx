@@ -31,10 +31,7 @@ export default function CleaningControlPage() {
   const isStopped = cleaningState.status === 'stopped';
   const isDamage = inspection.preset?.isDamage;
 
-  // Calculate wiper arm position on the 3 panels (from 10% to 90% across the container)
-  const wiperPositionPercent = isWiping
-    ? 10 + (cleaningState.progress / 100) * 80
-    : 10;
+
 
   return (
     <div className="space-y-5">
@@ -54,103 +51,7 @@ export default function CleaningControlPage() {
         </div>
       </div>
 
-      {/* Main Interactive Wiper Visualizer */}
-      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-sm relative overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            <RotateCw className={`w-5 h-5 text-blue-600 ${isWiping ? 'animate-spin' : ''}`} />
-            <h3 className="font-heading font-semibold text-lg text-slate-900">
-              Interactive 3-Panel Wiper Array
-            </h3>
-          </div>
-          <div className="flex items-center gap-2 font-mono text-xs">
-            <span className="text-slate-500 font-medium">PWM Servo GPIO 18</span>
-            <span className="text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200 font-semibold">
-              5V External Supply
-            </span>
-          </div>
-        </div>
 
-        {/* Visual 3-Panel Physical Representation with Animated Wiper */}
-        <div className="relative w-full h-56 sm:h-64 rounded-xl bg-slate-100 border border-slate-300 p-4 sm:p-6 overflow-hidden flex flex-col justify-between">
-          {/* Top Rail Bar */}
-          <div className="w-full h-3 bg-slate-300 rounded-full border border-slate-400 relative">
-            <div className="absolute inset-y-0 left-0 bg-blue-500/20 rounded-full w-full" />
-          </div>
-
-          {/* 3 Physical Solar Panels Layout */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-6 my-auto z-10">
-            {panels.map((panel) => {
-              return (
-                <div
-                  key={panel.id}
-                  className="relative h-28 sm:h-32 rounded-xl bg-gradient-to-b from-blue-900 to-slate-900 border-2 border-blue-600 p-2 sm:p-3 flex flex-col justify-between shadow-md"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono text-blue-200 font-bold">
-                      {panel.name.split(' ')[0]}
-                    </span>
-                    <span className="text-[10px] font-mono text-amber-300 bg-black/60 px-1.5 py-0.5 rounded font-bold">
-                      {panel.power_w.toFixed(2)}W
-                    </span>
-                  </div>
-
-                  {/* Photovoltaic Cells */}
-                  <div className="grid grid-cols-3 grid-rows-2 gap-1 h-14 opacity-50">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="bg-blue-400/20 rounded-xs border border-blue-400/40" />
-                    ))}
-                  </div>
-
-                  <div className="text-[10px] text-center font-mono text-blue-200/80 font-medium">
-                    INA219 @ {panel.i2c_address}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Wiper Squeegee Blade & Carriage Moving Across the Panels */}
-          <div
-            className="absolute top-2 bottom-3 w-5 transition-all duration-100 ease-linear z-30 pointer-events-none flex flex-col items-center"
-            style={{ left: `${wiperPositionPercent}%` }}
-          >
-            {/* Wiper Motor Mount Carriage */}
-            <div className="w-5 h-5 rounded-md bg-amber-400 border border-amber-600 shadow-md flex items-center justify-center">
-              <RotateCw className={`w-3 h-3 text-slate-900 ${isWiping ? 'animate-spin' : ''}`} />
-            </div>
-            {/* Wiper Soft Silicone Blade */}
-            <div className="w-2 flex-1 bg-amber-400 rounded-full shadow-md my-1 border border-amber-500" />
-            {/* Wiper tip */}
-            <div className="w-4 h-2 bg-blue-600 rounded-b-md border border-blue-700" />
-          </div>
-
-          {/* Bottom Guide Track */}
-          <div className="w-full h-2 bg-slate-300 rounded-full border border-slate-400 mt-2" />
-        </div>
-
-        {/* Real-time Wiper Progress & Status Banner */}
-        <div className="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <Timer className="w-4 h-4 text-blue-600" />
-            <span className="text-slate-600 font-medium">Current Actuator Status:</span>
-            <span className="font-mono font-bold text-slate-900">
-              {isWiping
-                ? `Wiping Sweep in Motion — ${cleaningState.progress}% Completed`
-                : isCooldown
-                ? `Resting in Cooldown — ${cleaningState.cooldownRemaining}s remaining`
-                : isStopped
-                ? 'EMERGENCY STOPPED'
-                : 'Idle — Wiper Stationed at 15° Home'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 font-mono text-slate-500 text-xs">
-            <span>Last Sweep:</span>
-            <span className="text-slate-800 font-semibold">{formatDateFull(cleaningState.lastCleaned)}</span>
-          </div>
-        </div>
-      </div>
 
       {/* Control Panels & Safety Engine */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

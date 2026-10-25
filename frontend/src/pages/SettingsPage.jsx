@@ -52,49 +52,6 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Backend & Database Status Card */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-blue-600" />
-            <h3 className="font-heading font-semibold text-base text-slate-900">
-              Backend &amp; Database Architecture
-            </h3>
-          </div>
-          <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-            Secure Backend Code
-          </span>
-        </div>
-        
-        <p className="text-xs text-slate-600 leading-relaxed">
-          MongoDB is securely connected directly inside the backend code. Database credentials and connection strings are stored privately in <span className="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">.env</span> (<code className="text-blue-700">MONGODB_URI</code>) and are never exposed to browser clients.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/80 flex items-center justify-between text-xs">
-            <div>
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">Inference Backend</div>
-              <div className="font-mono text-slate-900 font-bold text-xs mt-0.5 truncate">{backendUrl}</div>
-            </div>
-            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-              modelStatus.isConnected ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {modelStatus.isConnected ? 'ONLINE' : 'OFFLINE'}
-            </span>
-          </div>
-
-          <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center justify-between text-xs">
-            <div>
-              <div className="text-[11px] font-semibold text-amber-800 uppercase tracking-wider font-mono">MongoDB Storage</div>
-              <div className="font-mono text-slate-800 font-bold text-xs mt-0.5">Configured via .env</div>
-            </div>
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
-              MONGODB_URI
-            </span>
-          </div>
-        </div>
-      </div>
-
       <form onSubmit={handleSave} className="space-y-5">
         {/* Section 1: Sensor Thresholds & Anomaly Rules */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">

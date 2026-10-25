@@ -6,8 +6,7 @@ import {
   Camera, 
   RotateCw, 
   Bell, 
-  Settings, 
-  Activity
+  Settings
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
@@ -65,7 +64,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
   ];
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white border-r border-slate-200 p-4 min-h-[calc(100vh-61px)] justify-between select-none shadow-xs">
+    <aside className="hidden lg:flex flex-col w-64 shrink-0 bg-white border-r border-slate-200 p-4 sticky top-[65px] h-[calc(100vh-65px)] overflow-y-auto justify-between select-none shadow-xs">
       <div className="space-y-6">
         {/* Navigation Section */}
         <div>
@@ -118,37 +117,6 @@ export default function Sidebar({ activeTab, setActiveTab }) {
               );
             })}
           </nav>
-        </div>
-
-        {/* Hardware Status Snapshot Box */}
-        <div className="rounded-xl p-3.5 bg-slate-50 border border-slate-200 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
-              <Activity className="w-3.5 h-3.5 text-blue-600" /> Hardware Topology
-            </span>
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-              ESP32
-            </span>
-          </div>
-
-          <div className="text-xs space-y-1.5 text-slate-600 font-mono">
-            <div className="flex justify-between">
-              <span>INA219 x3:</span>
-              <span className="text-slate-900 font-bold">3 Channels</span>
-            </div>
-            <div className="flex justify-between">
-              <span>DS18B20 Temp:</span>
-              <span className="text-slate-900 font-bold">GPIO 4</span>
-            </div>
-            <div className="flex justify-between">
-              <span>SG90 Servo:</span>
-              <span className="text-slate-900 font-bold">PWM GPIO 18</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Database:</span>
-              <span className="text-amber-700 font-bold">.env</span>
-            </div>
-          </div>
         </div>
       </div>
 

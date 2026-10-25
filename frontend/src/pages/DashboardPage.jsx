@@ -6,7 +6,6 @@ import QuickWiperCard from '../components/dashboard/QuickWiperCard';
 import SurfaceInspectionSnippet from '../components/dashboard/SurfaceInspectionSnippet';
 import PanelCard from '../components/dashboard/PanelCard';
 import TelemetryCharts from '../components/dashboard/TelemetryCharts';
-import SystemConnectivityCard from '../components/dashboard/SystemConnectivityCard';
 import RecentAlertsList from '../components/dashboard/RecentAlertsList';
 
 export default function DashboardPage({ setActiveTab, setSelectedPanelId }) {
@@ -109,21 +108,12 @@ export default function DashboardPage({ setActiveTab, setSelectedPanelId }) {
         maxTempThreshold={settings.tempAlertThresholdC}
       />
 
-      {/* Row 4: Connectivity & Recent Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <SystemConnectivityCard
-            systemStatus={systemStatus}
-          />
-        </div>
-        <div className="lg:col-span-1">
-          <RecentAlertsList
-            alerts={alerts}
-            onAcknowledge={acknowledgeAlert}
-            onNavigate={() => setActiveTab('alerts')}
-          />
-        </div>
-      </div>
+      {/* Row 4: Recent Alerts */}
+      <RecentAlertsList
+        alerts={alerts}
+        onAcknowledge={acknowledgeAlert}
+        onNavigate={() => setActiveTab('alerts')}
+      />
     </div>
   );
 }
