@@ -23,7 +23,7 @@ MODEL_PATH = os.getenv("MODEL_PATH", str(DEFAULT_MODEL_PATH))
 # Inference parameters
 DEVICE = os.getenv("DEVICE", "cuda" if False else "cpu")
 DEFAULT_CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.50"))
-CRACK_CONFIDENCE_THRESHOLD = float(os.getenv("CRACK_THRESHOLD", "0.40"))  # Stricter for damage safety
+CRACK_CONFIDENCE_THRESHOLD = float(os.getenv("CRACK_THRESHOLD", "0.50"))  # Calibrated for accurate detection
 
 # Server configuration
 HOST = os.getenv("HOST", "0.0.0.0")

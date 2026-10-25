@@ -1,8 +1,10 @@
 import logging
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 
+# pyrefly: ignore[missing-import]
 import torch
 import torch.nn as nn
 
@@ -72,6 +74,7 @@ class MobileNetV3Classifier:
 
                 if "threshold" in checkpoint:
                     self.threshold = float(checkpoint["threshold"])
+                    self.crack_threshold = float(checkpoint["threshold"])
                 if "best_val_loss" in checkpoint:
                     self.best_val_loss = float(checkpoint["best_val_loss"])
                 if "epochs_completed" in checkpoint:
@@ -149,67 +152,70 @@ class MobileNetV3Classifier:
     def predict(self, image: Image.Image) -> Dict[str, Any]:
         """
         Runs genuine image classification on a PIL image using the fine-tuned MobileNetV3 checkpoint.
-        Uses sigmoid activations for multi-label surface inspection with dedicated crack threshold lockout.
+        Accurately identifies surface conditions: clean, dust, bird_droppings, crack, snow.
+        Enforces automatic wiper safety lockout when damage (crack) is detected.
         """
         if not self.is_loaded or self.model is None:
             raise RuntimeError("Model is not loaded. Please transfer checkpoint to backend.")
 
-        # Preprocess input tensor (1, 3, 224, 224)
+        t_start = time.perf_counter()
+
+        # Preprocess input tensor (1, 3, 224, 224) - guarantees RGB format
         tensor = preprocess_image(image, self.device)
 
         # Forward pass
         with torch.no_grad():
             logits = self.model(tensor)
             sigmoid_probs = torch.sigmoid(logits).squeeze(0).cpu().numpy()
+            softmax_probs = torch.softmax(logits, dim=1).squeeze(0).cpu().numpy()
 
-        # Build raw sigmoid probability map per trained class
+        inference_time_ms = round((time.perf_counter() - t_start) * 1000, 2)
+
+        # Build raw probability maps
         class_sigmoids: Dict[str, float] = {}
         for idx, class_name in enumerate(self.classes):
             prob = float(sigmoid_probs[idx]) if idx < len(sigmoid_probs) else 0.0
             class_sigmoids[class_name] = round(prob, 4)
 
-        # Multi-label defect classification logic
-        # 1. Safety-first check: Crack detection with strict threshold
-        crack_prob = class_sigmoids.get("crack", 0.0)
-        is_crack_detected = crack_prob >= self.crack_threshold
-
-        # 2. Check other cleanable contamination defects
-        cleanable_keys = [c for c in self.classes if c != "crack" and c != "clean"]
-        cleanable_scores = {k: class_sigmoids[k] for k in cleanable_keys if k in class_sigmoids}
-
-        best_cleanable_class = None
-        best_cleanable_prob = 0.0
-        if cleanable_scores:
-            best_cleanable_class = max(cleanable_scores, key=cleanable_scores.get)
-            best_cleanable_prob = cleanable_scores[best_cleanable_class]
-
-        is_cleanable_detected = best_cleanable_prob >= self.threshold
-
-        # Determine primary condition
-        if is_crack_detected:
-            primary_condition = "crack"
-            confidence = crack_prob
-            is_damage_detected = True
-            is_cleanable = False
-            wiper_action = "BLOCKED"
-            wiper_allowed = False
-            safety_status = "CRITICAL_DAMAGE_LOCK"
-            safety_message = "CRACK DETECTED: Automatic wiping is BLOCKED to prevent further glass fracture and abrasive degradation."
-        elif is_cleanable_detected and best_cleanable_class:
-            primary_condition = best_cleanable_class
-            confidence = best_cleanable_prob
-            is_damage_detected = False
-            is_cleanable = True
-            meta = CLASS_METADATA.get(primary_condition, {})
-            wiper_action = "WIPE_RECOMMENDED"
-            wiper_allowed = True
-            safety_status = "CLEANABLE_CONTAMINATION"
-            safety_message = f"Cleanable surface contamination detected ({meta.get('display_name', primary_condition)}). Wiper sweep authorized."
+        # Rank defect candidates
+        defect_classes = [c for c in self.classes if c != "clean"]
+        if defect_classes:
+            best_defect_class = max(defect_classes, key=lambda c: class_sigmoids.get(c, 0.0))
+            best_defect_prob = class_sigmoids.get(best_defect_class, 0.0)
         else:
-            # If no defect exceeds threshold
+            best_defect_class = None
+            best_defect_prob = 0.0
+
+        crack_prob = class_sigmoids.get("crack", 0.0)
+
+        # Surface condition determination logic:
+        # Check if top defect exceeds detection threshold (0.50)
+        if best_defect_prob >= self.threshold and best_defect_class:
+            # Defect confirmed on surface
+            # Crack safety priority: triggers if crack is highest defect OR crack >= crack_threshold (0.50)
+            if best_defect_class == "crack" or (crack_prob >= self.crack_threshold and crack_prob >= (best_defect_prob - 0.05)):
+                primary_condition = "crack"
+                confidence = crack_prob
+                is_damage_detected = True
+                is_cleanable = False
+                wiper_action = "BLOCKED"
+                wiper_allowed = False
+                safety_status = "CRITICAL_DAMAGE_LOCK"
+                safety_message = "CRACK DETECTED: Automatic wiping is BLOCKED to prevent further glass fracture and abrasive degradation."
+            else:
+                primary_condition = best_defect_class
+                confidence = best_defect_prob
+                is_damage_detected = False
+                is_cleanable = True
+                meta = CLASS_METADATA.get(primary_condition, {})
+                wiper_action = "WIPE_RECOMMENDED"
+                wiper_allowed = True
+                safety_status = "CLEANABLE_CONTAMINATION"
+                safety_message = f"Cleanable surface contamination detected ({meta.get('display_name', primary_condition)}). Wiper sweep authorized."
+        else:
+            # No defect exceeds threshold -> Nominal Clean Panel
             primary_condition = "clean"
-            max_defect_prob = max([crack_prob, best_cleanable_prob]) if self.classes else 0.0
-            clean_confidence = round(max(0.0, 1.0 - max_defect_prob), 4)
+            clean_confidence = round(max(0.0, 1.0 - best_defect_prob), 4)
             confidence = clean_confidence
             is_damage_detected = False
             is_cleanable = False
@@ -223,8 +229,7 @@ class MobileNetV3Classifier:
         # Standardized 5-class distribution for frontend visualization
         all_display_scores = dict(class_sigmoids)
         if "clean" not in all_display_scores:
-            max_defect = max(class_sigmoids.values()) if class_sigmoids else 0.0
-            all_display_scores["clean"] = round(max(0.0, 1.0 - max_defect), 4)
+            all_display_scores["clean"] = round(max(0.0, 1.0 - best_defect_prob), 4)
 
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -240,6 +245,7 @@ class MobileNetV3Classifier:
             "safety_message": safety_message,
             "model_architecture": f"MobileNetV3-Small (Fine-Tuned Checkpoint)",
             "device": str(self.device),
+            "inference_time_ms": inference_time_ms,
             "best_val_loss": self.best_val_loss,
             "epochs_completed": self.epochs_completed,
             "threshold": self.threshold,

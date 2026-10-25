@@ -8,10 +8,10 @@ except Exception:
 from torchvision import transforms
 
 
-# Preprocessing transforms matching torchvision MobileNetV3-Small training pipeline
+# Preprocessing transforms matching torchvision MobileNetV3-Small input specification
+# Direct 224x224 resize preserves the entire solar panel surface without cropping out defects
 PREPROCESS_TRANSFORM = transforms.Compose([
-    transforms.Resize(256, interpolation=transforms.InterpolationMode.BILINEAR),
-    transforms.CenterCrop(224),
+    transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BILINEAR),
     transforms.ToTensor(),
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
@@ -29,6 +29,8 @@ def load_image_from_bytes(image_bytes: bytes) -> Image.Image:
 
 def preprocess_image(image: Image.Image, device: torch.device) -> torch.Tensor:
     """Preprocesses a PIL Image into a PyTorch tensor (1, 3, 224, 224)."""
+    if image.mode != "RGB":
+        image = image.convert("RGB")
     tensor = PREPROCESS_TRANSFORM(image)
     tensor = tensor.unsqueeze(0).to(device)
     return tensor
