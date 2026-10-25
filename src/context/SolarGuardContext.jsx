@@ -32,6 +32,45 @@ export function SolarGuardProvider({ children }) {
     ]
   });
 
+  // FastAPI Inference Backend State (Supports Vercel env, localStorage, and LAN IP for mobile testing)
+  const getInitialBackendUrl = () => {
+    if (import.meta.env.VITE_BACKEND_URL) {
+      return import.meta.env.VITE_BACKEND_URL.replace(/\/+$/, '');
+    }
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('solarguard_backend_url');
+      if (saved) return saved.trim().replace(/\/+$/, '');
+
+      const host = window.location.hostname;
+      if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.includes('vercel.app')) {
+        return `http://${host}:8000`;
+      }
+    }
+    return 'http://127.0.0.1:8000';
+  };
+
+  const [backendUrl, setBackendUrlState] = useState(getInitialBackendUrl);
+
+  const setBackendUrl = (url) => {
+    const cleanUrl = url ? url.trim().replace(/\/+$/, '') : 'http://127.0.0.1:8000';
+    setBackendUrlState(cleanUrl);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('solarguard_backend_url', cleanUrl);
+    }
+  };
+
+  const [modelStatus, setModelStatus] = useState({
+    isConnected: false,
+    isLoaded: false,
+    modelName: 'SolarGuard MobileNetV3-Small',
+    classes: ['crack', 'dust', 'bird_droppings', 'snow', 'clean'],
+    device: 'cpu',
+    checkpointPath: '',
+    error: null,
+    lastPing: null,
+  });
+
+
   // Cleaning Mechanism State
   const [cleaningState, setCleaningState] = useState({
     status: 'idle', // 'idle' | 'wiping' | 'cooldown' | 'fault' | 'stopped'
@@ -377,6 +416,101 @@ export function SolarGuardProvider({ children }) {
     setAlerts((prev) => prev.filter((a) => !a.acknowledged));
   };
 
+  // Backend health & model check
+  const checkBackendStatus = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/model/info`);
+      if (res.ok) {
+        const data = await res.json();
+        setModelStatus({
+          isConnected: true,
+          isLoaded: data.is_loaded,
+          modelName: data.model_name,
+          classes: data.supported_classes,
+          device: data.device,
+          checkpointPath: data.loaded_checkpoint_path || data.configured_checkpoint_path,
+          error: data.load_error,
+          lastPing: new Date().toLocaleTimeString(),
+        });
+        setSystemStatus((prev) => ({
+          ...prev,
+          mlService: { connected: true, model: data.model_name, latencyMs: 12 },
+        }));
+      } else {
+        setModelStatus((prev) => ({ ...prev, isConnected: false, lastPing: new Date().toLocaleTimeString() }));
+      }
+    } catch (err) {
+      setModelStatus((prev) => ({ ...prev, isConnected: false, lastPing: new Date().toLocaleTimeString() }));
+    }
+  };
+
+  useEffect(() => {
+    checkBackendStatus();
+    const id = setInterval(checkBackendStatus, 8000);
+    return () => clearInterval(id);
+  }, [backendUrl]);
+
+  // Live model prediction handler
+  const predictLiveImage = async (imageBlob) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', imageBlob, 'capture.jpg');
+
+      const res = await fetch(`${backendUrl}/api/predict`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail?.message || `Inference server returned ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      const livePreset = {
+        id: `INSP-${Date.now().toString().slice(-4)}`,
+        title: data.display_name,
+        className: data.primary_condition,
+        confidence: data.confidence,
+        classProbabilities: data.class_probabilities,
+        isCleanable: data.is_cleanable,
+        isDamage: data.is_damage_detected,
+        wiperAction: data.wiper_action,
+        recommendedAction: data.safety_message,
+        timestamp: data.timestamp,
+        svgType: data.primary_condition,
+        isGenuineModelPrediction: true,
+      };
+
+      setInspection((prev) => ({
+        ...prev,
+        preset: livePreset,
+        timestamp: data.timestamp,
+        history: [livePreset, ...prev.history.slice(0, 19)],
+      }));
+
+      // Damage safety lockout
+      if (data.is_damage_detected) {
+        addAlert({
+          type: 'DAMAGE_LOCKOUT',
+          severity: 'critical',
+          panelId: null,
+          title: 'MobileNetV3 Flagged Surface Crack',
+          message: data.safety_message,
+          recommendedAction: 'Automatic wiping is locked to protect panel glass. Manual inspection required.',
+        });
+      } else if (data.is_cleanable && cleaningState.autoCleaningEnabled && cleaningState.status === 'idle') {
+        setTimeout(() => triggerWipe('Auto (CV - Live Model)'), 800);
+      }
+
+      return { success: true, data };
+    } catch (err) {
+      console.error('Failed to run live model inference:', err);
+      return { success: false, error: err.message };
+    }
+  };
+
   // Toggle auto cleaning
   const toggleAutoCleaning = () => {
     setCleaningState((prev) => {
@@ -420,11 +554,17 @@ export function SolarGuardProvider({ children }) {
         setSystemStatus,
         mobilePreviewMode,
         setMobilePreviewMode,
+        backendUrl,
+        setBackendUrl,
+        modelStatus,
+        checkBackendStatus,
+        predictLiveImage,
       }}
     >
       {children}
     </SolarGuardContext.Provider>
   );
+
 }
 
 export function useSolarGuard() {

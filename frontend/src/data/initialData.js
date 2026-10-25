@@ -187,8 +187,8 @@ export const INSPECTION_PRESETS = [
   },
   {
     id: 'crack',
-    title: 'Crack / Glass Breakage',
-    className: 'crack_or_breakage',
+    title: 'Crack / Structural Fracture',
+    className: 'crack',
     confidence: 0.91,
     isCleanable: false,
     isDamage: true,
@@ -196,5 +196,17 @@ export const INSPECTION_PRESETS = [
     description: 'Surface fracture detected. DO NOT WIPE to prevent mechanical abrasion or water ingress.',
     recommendedAction: 'LOCK WIPER - Alert technician for physical repair',
     svgType: 'crack'
+  },
+  {
+    id: 'snow',
+    title: 'Snow Accumulation',
+    className: 'snow',
+    confidence: 0.93,
+    isCleanable: true,
+    isDamage: false,
+    color: '#38bdf8',
+    description: 'Cold-climate snow accumulation obscuring solar cells.',
+    recommendedAction: 'Wiper sweep recommended to melt/clear layer',
+    svgType: 'snow'
   }
 ];

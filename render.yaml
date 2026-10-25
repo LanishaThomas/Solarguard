@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: solarguard-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r backend/requirements.txt"
+    startCommand: "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: MODEL_PATH
+        value: backend/models/solarguard_mobilenetv3_50epoch_finetuned.pt
+      - key: CONFIDENCE_THRESHOLD
+        value: "0.50"
+      - key: CRACK_THRESHOLD
+        value: "0.40"
+      - key: CORS_ORIGINS
+        value: "*"
