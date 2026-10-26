@@ -467,7 +467,7 @@ export function SolarGuardProvider({ children }) {
       return { success: false, reason: 'ALREADY_WIPING' };
     }
 
-    if (cleaningState.status === 'cooldown') {
+    if (cleaningState.status === 'cooldown' && cleaningState.cooldownRemaining > 0) {
       addAlert({
         type: 'COOLDOWN_ACTIVE',
         severity: 'warning',
@@ -478,6 +478,9 @@ export function SolarGuardProvider({ children }) {
       });
       return { success: false, reason: 'COOLDOWN_ACTIVE' };
     }
+
+    if (wipeIntervalRef.current) clearInterval(wipeIntervalRef.current);
+    if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current);
 
     const duration = settings.wiperDurationMs || 1800;
 
@@ -529,14 +532,37 @@ export function SolarGuardProvider({ children }) {
           notes: `${triggerType} sweep executed across solar surface.`
         };
 
+        const cooldownTotal = Number(settings.wiperCooldownSec) > 0 ? Number(settings.wiperCooldownSec) : 5;
+        let cooldownLeft = cooldownTotal;
+
         setCleaningState((prev) => ({
           ...prev,
           status: 'cooldown',
           progress: 100,
-          cooldownRemaining: settings.wiperCooldownSec || 45,
+          cooldownRemaining: cooldownLeft,
           lastCleaned: new Date().toISOString(),
           history: [newLog, ...prev.history]
         }));
+
+        if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current);
+        cooldownIntervalRef.current = setInterval(() => {
+          cooldownLeft--;
+          if (cooldownLeft <= 0) {
+            clearInterval(cooldownIntervalRef.current);
+            cooldownIntervalRef.current = null;
+            setCleaningState((prev) => ({
+              ...prev,
+              status: 'idle',
+              progress: 0,
+              cooldownRemaining: 0
+            }));
+          } else {
+            setCleaningState((prev) => ({
+              ...prev,
+              cooldownRemaining: cooldownLeft
+            }));
+          }
+        }, 1000);
       }
     }, intervalMs);
 
@@ -717,7 +743,7 @@ export function SolarGuardProvider({ children }) {
           message: data.safety_message,
           recommendedAction: 'Automatic wiping is locked to protect panel glass. Manual inspection required.',
         });
-      } else if (data.is_cleanable && cleaningState.autoCleaningEnabled && cleaningState.status === 'idle') {
+      } else if (data.is_cleanable && cleaningState.autoCleaningEnabled && cleaningState.status !== 'wiping') {
         setTimeout(() => triggerWipe('Auto (CV - Live Model)'), 800);
       }
 
@@ -732,7 +758,7 @@ export function SolarGuardProvider({ children }) {
   const toggleAutoCleaning = () => {
     setCleaningState((prev) => {
       const next = !prev.autoCleaningEnabled;
-      if (next && inspection.preset?.isCleanable && prev.status === 'idle') {
+      if (next && inspection.preset?.isCleanable && prev.status !== 'wiping') {
         setTimeout(() => triggerWipe('Auto (CV)'), 500);
       }
       return { ...prev, autoCleaningEnabled: next };

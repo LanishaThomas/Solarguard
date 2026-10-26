@@ -16,7 +16,7 @@ export const DEFAULT_SETTINGS = {
 
   // Wiper parameters
   wiperDurationMs: 1800,
-  wiperCooldownSec: 45,
+  wiperCooldownSec: 5,
   minSweepAngle: 10,
   maxSweepAngle: 170,
   autoCleaningEnabled: true,

@@ -897,11 +897,11 @@ export default function CameraDetectionPage() {
             <div className="space-y-2 pt-1">
               <button
                 onClick={() => triggerWipe('Vision Inspection Trigger')}
-                disabled={isCrack || cleaningState.status === 'wiping' || cleaningState.status === 'cooldown' || !isCleanable}
+                disabled={isCrack || cleaningState.status === 'wiping' || (cleaningState.status === 'cooldown' && cleaningState.cooldownRemaining > 0) || !isCleanable}
                 className={`w-full py-2.5 px-4 rounded-xl font-heading font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition ${
                   isCrack
                     ? 'bg-rose-100 text-rose-700 border border-rose-300 cursor-not-allowed'
-                    : cleaningState.status === 'wiping' || cleaningState.status === 'cooldown' || !isCleanable
+                    : cleaningState.status === 'wiping' || (cleaningState.status === 'cooldown' && cleaningState.cooldownRemaining > 0) || !isCleanable
                     ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
                 }`}
@@ -912,7 +912,7 @@ export default function CameraDetectionPage() {
                     ? 'WIPER LOCKED (Damage Detected)'
                     : cleaningState.status === 'wiping'
                     ? 'Wiping in Progress...'
-                    : cleaningState.status === 'cooldown'
+                    : cleaningState.status === 'cooldown' && cleaningState.cooldownRemaining > 0
                     ? `Cooldown Active (${cleaningState.cooldownRemaining}s)`
                     : 'Clean This Obstruction Now'}
                 </span>
