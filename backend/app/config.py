@@ -41,4 +41,13 @@ CORS_ORIGINS = [normalize_origin(orig) for orig in cors_env.split(",") if orig.s
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b").strip()
 
+# EMQX Cloud MQTT Configuration
+EMQX_BROKER = os.getenv("EMQX_BROKER", os.getenv("VITE_EMQX_BROKER", "v20f2113.ala.asia-southeast1.emqxsl.com"))
+EMQX_PORT = int(os.getenv("EMQX_PORT", "8883"))
+EMQX_USERNAME = os.getenv("EMQX_USERNAME", os.getenv("VITE_EMQX_USERNAME", ""))
+EMQX_PASSWORD = os.getenv("EMQX_PASSWORD", os.getenv("VITE_EMQX_PASSWORD", ""))
+EMQX_TOPIC_PREFIX = os.getenv("EMQX_TOPIC_PREFIX", os.getenv("VITE_EMQX_TOPIC_PREFIX", "solarguard"))
+
+
+
 

@@ -231,53 +231,171 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Section 3: Hardware Gateway Settings */}
+        {/* Section 3: EMQX Cloud MQTT Broker & ESP32 Link */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-            <Cpu className="w-5 h-5 text-blue-600" />
-            <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
-              Hardware Gateway Endpoint
-            </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-blue-600" />
+              <div>
+                <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
+                  EMQX Cloud MQTT Broker &amp; ESP32 Link
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Connects the React web app directly to the ESP32 SG90 wiper &amp; DS18B20 sensor via EMQX Cloud
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold ${
+                localSettings.mqttEnabled
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${localSettings.mqttEnabled ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`}></span>
+                {localSettings.mqttEnabled ? 'EMQX Enabled' : 'EMQX Disabled'}
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+          {/* Quick preset selector */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 pb-2">
+            <span className="text-xs font-semibold text-slate-700">Quick Configuration:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLocalSettings({
+                  ...localSettings,
+                  mqttEnabled: true,
+                  mqttBroker: 'v20f2113.ala.asia-southeast1.emqxsl.com',
+                  mqttPort: 8084,
+                  mqttPath: '/mqtt',
+                  mqttUseTls: true,
+                  mqttTopicPrefix: 'solarguard'
+                });
+              }}
+              className="text-xs px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-medium transition"
+            >
+              ⚡ Load Solarguard EMQX Cluster (v20f2113)
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                ESP32 REST Gateway Endpoint
+                EMQX Broker Host / Address
               </label>
               <input
                 type="text"
-                value={localSettings.esp32Endpoint}
+                value={localSettings.mqttBroker || ''}
                 onChange={(e) =>
-                  setLocalSettings({ ...localSettings, esp32Endpoint: e.target.value })
+                  setLocalSettings({ ...localSettings, mqttBroker: e.target.value.trim() })
                 }
-                placeholder="http://192.168.1.150"
+                placeholder="v20f2113.ala.asia-southeast1.emqxsl.com"
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                IP address of the physical ESP32 micro-controller on your Wi-Fi
+                EMQX Serverless Host: <code>v20f2113.ala.asia-southeast1.emqxsl.com</code>
               </p>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Telemetry Polling Interval
+                WebSocket TLS Port (WSS)
               </label>
-              <select
-                value={localSettings.telemetryIntervalMs}
+              <input
+                type="number"
+                value={localSettings.mqttPort || 8084}
                 onChange={(e) =>
-                  setLocalSettings({
-                    ...localSettings,
-                    telemetryIntervalMs: Number(e.target.value),
-                  })
+                  setLocalSettings({ ...localSettings, mqttPort: Number(e.target.value) })
                 }
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
-              >
-                <option value={1000}>1000 ms (Fast 1Hz)</option>
-                <option value={2500}>2500 ms (Standard)</option>
-                <option value={5000}>5000 ms (Conserve bandwidth)</option>
-              </select>
-              <p className="text-[11px] text-slate-500 mt-1">Rate of real sensor query requests</p>
+                placeholder="8084"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Port 8084 (EMQX WebSocket over TLS/SSL)
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                EMQX Client Username
+              </label>
+              <input
+                type="text"
+                value={localSettings.mqttUsername || ''}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, mqttUsername: e.target.value })
+                }
+                placeholder="Created in EMQX Access Control"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Configured in EMQX Console &gt; Access Control</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                EMQX Client Password
+              </label>
+              <input
+                type="password"
+                value={localSettings.mqttPassword || ''}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, mqttPassword: e.target.value })
+                }
+                placeholder="••••••••"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Topic Prefix
+              </label>
+              <input
+                type="text"
+                value={localSettings.mqttTopicPrefix || 'solarguard'}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, mqttTopicPrefix: e.target.value.trim() })
+                }
+                placeholder="solarguard"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Default: <code>solarguard</code></p>
+            </div>
+          </div>
+
+          {/* Pinout hardware mapping summary */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 mt-2">
+            <div className="font-heading font-semibold text-xs text-slate-800 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>Current Breadboard Hardware Connections</span>
+              <span className="text-[11px] font-mono text-blue-600">Firmware: solarguard_esp32_wiper.ino</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs font-mono">
+              <div className="p-2 rounded-lg bg-white border border-slate-200 text-center">
+                <span className="block font-bold text-slate-900">3V3</span>
+                <span className="text-[10px] text-slate-500">Sensor Rail</span>
+              </div>
+              <div className="p-2 rounded-lg bg-white border border-slate-200 text-center">
+                <span className="block font-bold text-slate-900">GND</span>
+                <span className="text-[10px] text-slate-500">Common GND</span>
+              </div>
+              <div className="p-2 rounded-lg bg-white border border-slate-200 text-center">
+                <span className="block font-bold text-slate-900">GPIO 21</span>
+                <span className="text-[10px] text-slate-500">Shared SDA</span>
+              </div>
+              <div className="p-2 rounded-lg bg-white border border-slate-200 text-center">
+                <span className="block font-bold text-slate-900">GPIO 22</span>
+                <span className="text-[10px] text-slate-500">Shared SCL</span>
+              </div>
+              <div className="p-2 rounded-lg bg-white border border-slate-200 text-center">
+                <span className="block font-bold text-amber-600">GPIO 4</span>
+                <span className="text-[10px] text-slate-500">DS18B20 Temp</span>
+              </div>
+              <div className="p-2 rounded-lg bg-white border border-slate-200 text-center">
+                <span className="block font-bold text-blue-600">GPIO 18</span>
+                <span className="text-[10px] text-slate-500">SG90 Wiper</span>
+              </div>
             </div>
           </div>
         </div>

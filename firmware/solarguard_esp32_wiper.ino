@@ -1,0 +1,495 @@
+/**
+ * ======================================================================================
+ * SolarGuard IoT — ESP32 Smart Wiper & Temperature Subsystem Firmware
+ * ======================================================================================
+ * 
+ * Target Microcontroller: ESP32 (ESP32-WROOM-32 / DevKit V1)
+ * Framework: Arduino ESP32
+ * 
+ * Hardware Connections (Matching User Breadboard Wiring):
+ * --------------------------------------------------------------------------------------
+ *  ESP32 Pin | Connection
+ * -----------+--------------------------------------------------------------------------
+ *  3V3       | Breadboard positive rail for sensors (DS18B20 VDD)
+ *  GND       | Breadboard ground rail (COMMON GROUND with 5V external power supply!)
+ *  GPIO 21   | Shared SDA line (I2C)
+ *  GPIO 22   | Shared SCL line (I2C)
+ *  GPIO 4    | DS18B20 1-Wire Data line (requires 4.7 kΩ pull-up resistor to 3V3)
+ *  GPIO 18   | SG90 Servo PWM signal line (Orange/Yellow wire)
+ * --------------------------------------------------------------------------------------
+ * 
+ * POWER NOTICE FOR SG90 SERVO:
+ *  - Do NOT connect SG90 V+ (Red wire) to the ESP32 3V3 pin!
+ *  - Power the SG90 from a dedicated 5V power supply (or ESP32 VIN/5V pin if USB powered).
+ *  - The Ground (Brown/Black wire) of the servo and 5V power supply MUST be connected
+ *    to the ESP32 GND rail (Common Ground).
+ * 
+ * REQUIRED ARDUINO LIBRARIES (Install via Arduino Library Manager):
+ *  1. "ESP32Servo" by Kevin Harrington, John K. Bennett
+ *  2. "PubSubClient" by Nick O'Leary
+ *  3. "OneWire" by Paul Stoffregen
+ *  4. "DallasTemperature" by Miles Burton
+ *  5. "ArduinoJson" by Benoit Blanchon (Version 6 or 7)
+ * ======================================================================================
+ */
+
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <ESP32Servo.h>
+#include <Wire.h>
+#include <ArduinoJson.h>
+
+// ======================================================================================
+// 1. NETWORK & EMQX CLOUD MQTT CONFIGURATION
+// ======================================================================================
+
+// Wi-Fi Credentials — Replace with your Wi-Fi network details
+const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+
+/**
+ * EMQX CLOUD DEPLOYMENT SETTINGS:
+ * Address: v20f2113.ala.asia-southeast1.emqxsl.com
+ * Port: 8883 (MQTT over TLS/SSL)
+ *
+ * NOTE: Create your MQTT client credentials in your EMQX Cloud console:
+ *   "Access Control" -> "Authentication" -> Add Username & Password.
+ */
+const char* MQTT_BROKER   = "v20f2113.ala.asia-southeast1.emqxsl.com";
+const int   MQTT_PORT     = 8883;
+const char* MQTT_USER     = "YOUR_EMQX_USERNAME";    // Created in EMQX Access Control
+const char* MQTT_PASSWORD = "YOUR_EMQX_PASSWORD";    // Created in EMQX Access Control
+
+// Topic Configuration (Matches SolarGuard React Web App)
+const char* TOPIC_PREFIX        = "solarguard";
+const char* TOPIC_TELEMETRY     = "solarguard/telemetry";       // Publishes temperature & health
+const char* TOPIC_WIPER_STATUS  = "solarguard/wiper/status";    // Publishes wipe progress & state
+const char* TOPIC_DEVICE_STATUS = "solarguard/status";          // Publishes online/offline LWT
+const char* TOPIC_WIPER_COMMAND = "solarguard/wiper/command";   // Subscribes to WIPE, STOP, RESET
+
+// ======================================================================================
+// 2. HARDWARE PIN DEFINITIONS (EXACT USER PINOUT)
+// ======================================================================================
+#define PIN_I2C_SDA     21    // Shared SDA Line
+#define PIN_I2C_SCL     22    // Shared SCL Line
+#define PIN_DS18B20     4     // DS18B20 1-Wire Data
+#define PIN_SG90_SERVO  18    // SG90 Servo PWM Signal
+
+// ======================================================================================
+// 3. WIPER ACTUATOR PARAMETERS
+// ======================================================================================
+const int SWEEP_HOME_ANGLE      = 10;   // Home park position (avoiding 0 deg mechanical stop)
+const int SWEEP_MAX_ANGLE       = 170;  // Max sweep end angle (avoiding 180 deg stop)
+const int SWEEP_STEP_DELAY_MS   = 12;   // Delay between degree steps (determines sweep speed)
+const int WIPER_COOLDOWN_SEC    = 45;   // Mandatory rest duration to prevent servo motor burnout
+
+// Wiper State Machine States
+enum WiperState {
+  STATE_IDLE,
+  STATE_SWEEPING_FORWARD,
+  STATE_SWEEPING_BACKWARD,
+  STATE_COOLDOWN,
+  STATE_STOPPED,
+  STATE_FAULT
+};
+
+WiperState currentWiperState = STATE_IDLE;
+int currentServoAngle = SWEEP_HOME_ANGLE;
+unsigned long lastServoStepTime = 0;
+unsigned long cooldownStartTime = 0;
+int lastReportedProgress = -1;
+int sweepExecutionCount = 0;
+
+// ======================================================================================
+// 4. SENSOR & HARDWARE OBJECTS
+// ======================================================================================
+OneWire oneWire(PIN_DS18B20);
+DallasTemperature tempSensors(&oneWire);
+Servo wiperServo;
+
+// TLS Client for EMQX Cloud port 8883
+WiFiClientSecure netClient;
+
+PubSubClient mqttClient(netClient);
+
+// Timing intervals
+unsigned long lastTelemetryPublish = 0;
+const unsigned long TELEMETRY_INTERVAL_MS = 3000;  // Read DS18B20 every 3 seconds
+
+// Forward Declarations
+void setupWiFi();
+void setupMQTT();
+void reconnectMQTT();
+void mqttCallback(char* topic, byte* payload, unsigned int length);
+void handleWiperCommand(const String& cmd);
+void startWiperCycle();
+void stopWiperImmediate();
+void updateWiperStateMachine();
+void publishWiperStatus(const char* stateStr, int progress, int cooldownRemaining = 0);
+void publishTelemetry();
+void publishDeviceStatus(bool isOnline);
+
+// ======================================================================================
+// SETUP
+// ======================================================================================
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  Serial.println(F("\n======================================================="));
+  Serial.println(F("     SolarGuard IoT — ESP32 Smart Wiper Firmware     "));
+  Serial.println(F("======================================================="));
+  Serial.printf(" [HW] I2C Pins: SDA=GPIO%d, SCL=GPIO%d\n", PIN_I2C_SDA, PIN_I2C_SCL);
+  Serial.printf(" [HW] DS18B20 Temp Sensor: GPIO%d\n", PIN_DS18B20);
+  Serial.printf(" [HW] SG90 Servo Actuator: GPIO%d\n", PIN_SG90_SERVO);
+
+  // Initialize I2C Bus for shared line
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  Serial.println(F(" [I2C] Bus initialized on GPIO 21 & 22"));
+
+  // Initialize DS18B20
+  tempSensors.begin();
+  int deviceCount = tempSensors.getDeviceCount();
+  Serial.printf(" [DS18B20] Found %d OneWire temperature sensor(s)\n", deviceCount);
+
+  // Initialize SG90 Servo PWM configuration
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  wiperServo.setPeriodHertz(50); // Standard 50Hz servo PWM
+
+  // Move to park position briefly, then detach to eliminate idle jitter & buzz
+  wiperServo.attach(PIN_SG90_SERVO, 500, 2400);
+  wiperServo.write(SWEEP_HOME_ANGLE);
+  delay(400);
+  wiperServo.detach(); // Detach to protect motor coils when idle
+  Serial.println(F(" [SERVO] SG90 calibrated and parked at home (10 deg). Detached."));
+
+  // Connect to Wi-Fi
+  setupWiFi();
+
+  // Connect to EMQX Cloud MQTT
+  setupMQTT();
+}
+
+// ======================================================================================
+// MAIN LOOP
+// ======================================================================================
+void loop() {
+  // 1. Maintain Wi-Fi and MQTT connection
+  if (WiFi.status() != WL_CONNECTED) {
+    setupWiFi();
+  }
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+  mqttClient.loop();
+
+  // 2. Non-blocking Wiper Movement and Cooldown State Machine
+  updateWiperStateMachine();
+
+  // 3. Periodic DS18B20 Temperature Telemetry Publish
+  unsigned long now = millis();
+  if (now - lastTelemetryPublish >= TELEMETRY_INTERVAL_MS) {
+    lastTelemetryPublish = now;
+    publishTelemetry();
+  }
+}
+
+// ======================================================================================
+// WI-FI & MQTT MANAGEMENT
+// ======================================================================================
+void setupWiFi() {
+  Serial.printf(" [WIFI] Connecting to SSID: %s ", WIFI_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  int retries = 0;
+  while (WiFi.status() != WL_CONNECTED && retries < 30) {
+    delay(500);
+    Serial.print(".");
+    retries++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println(F("\n [WIFI] Connected successfully!"));
+    Serial.printf(" [WIFI] IP Address: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf(" [WIFI] Signal Strength (RSSI): %d dBm\n", WiFi.RSSI());
+  } else {
+    Serial.println(F("\n [WIFI] Warning: Wi-Fi connection timed out. Will retry in loop..."));
+  }
+}
+
+void setupMQTT() {
+  // EMQX Cloud uses TLS on port 8883.
+  // Bypass strict CA root certificate matching on embedded ESP32 to prevent cert expiration failures
+  netClient.setInsecure();
+  Serial.println(F(" [MQTT] TLS Security initialized for EMQX Cloud (Port 8883)"));
+
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setCallback(mqttCallback);
+  mqttClient.setBufferSize(512); // Ensure buffer fits JSON payloads
+  Serial.printf(" [MQTT] Broker configured: %s:%d\n", MQTT_BROKER, MQTT_PORT);
+}
+
+void reconnectMQTT() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  static unsigned long lastReconnectAttempt = 0;
+  unsigned long now = millis();
+
+  // Reconnect every 4 seconds without freezing the loop
+  if (now - lastReconnectAttempt > 4000) {
+    lastReconnectAttempt = now;
+    String clientId = "SolarGuard-ESP32-" + String(WiFi.macAddress()).substring(9);
+    Serial.printf(" [MQTT] Attempting connection as %s to %s... ", clientId.c_str(), MQTT_BROKER);
+
+    // Last Will and Testament: mark offline if connection drops unexpectedly
+    const char* willTopic = TOPIC_DEVICE_STATUS;
+    const char* willMessage = "{\"online\":false,\"reason\":\"connection_lost\"}";
+    int willQos = 1;
+    bool willRetain = true;
+
+    bool connected = false;
+    if (strlen(MQTT_USER) > 0) {
+      connected = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD, willTopic, willQos, willRetain, willMessage);
+    } else {
+      connected = mqttClient.connect(clientId.c_str(), willTopic, willQos, willRetain, willMessage);
+    }
+
+    if (connected) {
+      Serial.println(F("CONNECTED!"));
+      publishDeviceStatus(true);
+
+      // Subscribe to wiper command topic
+      mqttClient.subscribe(TOPIC_WIPER_COMMAND);
+      Serial.printf(" [MQTT] Subscribed to command topic: %s\n", TOPIC_WIPER_COMMAND);
+
+      // Send initial status
+      publishWiperStatus("IDLE", 0, 0);
+    } else {
+      Serial.printf("FAILED (rc=%d). Will retry in 4s.\n", mqttClient.state());
+    }
+  }
+}
+
+// ======================================================================================
+// MQTT MESSAGE HANDLER
+// ======================================================================================
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  // Convert payload buffer to String
+  String message = "";
+  for (unsigned int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+  message.trim();
+
+  Serial.printf(" [MQTT RX] Topic: %s | Message: %s\n", topic, message.c_str());
+
+  if (String(topic) == TOPIC_WIPER_COMMAND) {
+    // Check if payload is JSON or plain string command
+    if (message.startsWith("{")) {
+      StaticJsonDocument<256> doc;
+      DeserializationError err = deserializeJson(doc, message);
+      if (!err) {
+        const char* cmd = doc["command"] | doc["action"] | "";
+        handleWiperCommand(String(cmd));
+      } else {
+        handleWiperCommand(message);
+      }
+    } else {
+      handleWiperCommand(message);
+    }
+  }
+}
+
+void handleWiperCommand(const String& cmd) {
+  String upperCmd = cmd;
+  upperCmd.toUpperCase();
+
+  if (upperCmd == "WIPE" || upperCmd == "CLEAN" || upperCmd == "START") {
+    if (currentWiperState == STATE_SWEEPING_FORWARD || currentWiperState == STATE_SWEEPING_BACKWARD) {
+      Serial.println(F(" [WIPER] Command ignored: Wiper is already sweeping."));
+    } else if (currentWiperState == STATE_COOLDOWN) {
+      Serial.println(F(" [WIPER] Command rejected: Cooldown period active to protect SG90 servo."));
+    } else {
+      startWiperCycle();
+    }
+  } else if (upperCmd == "STOP" || upperCmd == "EMERGENCY_STOP") {
+    Serial.println(F(" [WIPER] EMERGENCY STOP RECEIVED! Powering off servo immediately."));
+    stopWiperImmediate();
+  } else if (upperCmd == "RESET" || upperCmd == "STANDBY") {
+    Serial.println(F(" [WIPER] Resetting fault/cooldown state to IDLE."));
+    currentWiperState = STATE_IDLE;
+    publishWiperStatus("IDLE", 0, 0);
+  } else {
+    Serial.printf(" [WIPER] Unknown command received: %s\n", cmd.c_str());
+  }
+}
+
+// ======================================================================================
+// WIPER ACTUATION LOGIC (NON-BLOCKING SG90 SWEEP)
+// ======================================================================================
+void startWiperCycle() {
+  Serial.println(F(" [WIPER] Starting SG90 wiper sweep cycle across solar panel..."));
+  
+  // Attach servo PWM on GPIO 18
+  if (!wiperServo.attached()) {
+    wiperServo.attach(PIN_SG90_SERVO, 500, 2400);
+  }
+  
+  currentServoAngle = SWEEP_HOME_ANGLE;
+  wiperServo.write(currentServoAngle);
+  currentWiperState = STATE_SWEEPING_FORWARD;
+  lastServoStepTime = millis();
+  lastReportedProgress = -1;
+  sweepExecutionCount++;
+
+  publishWiperStatus("WIPING", 0, 0);
+}
+
+void stopWiperImmediate() {
+  // Cut PWM immediately to prevent motor stall current
+  if (wiperServo.attached()) {
+    wiperServo.detach();
+  }
+  currentWiperState = STATE_STOPPED;
+  publishWiperStatus("STOPPED", 0, 0);
+}
+
+void updateWiperStateMachine() {
+  unsigned long now = millis();
+
+  switch (currentWiperState) {
+    case STATE_SWEEPING_FORWARD:
+      if (now - lastServoStepTime >= (unsigned long)SWEEP_STEP_DELAY_MS) {
+        lastServoStepTime = now;
+        currentServoAngle++;
+        wiperServo.write(currentServoAngle);
+
+        // Calculate progress: 0% to 50% during forward stroke
+        int progress = map(currentServoAngle, SWEEP_HOME_ANGLE, SWEEP_MAX_ANGLE, 0, 50);
+        if (progress != lastReportedProgress && progress % 10 == 0) {
+          lastReportedProgress = progress;
+          publishWiperStatus("WIPING", progress, 0);
+        }
+
+        if (currentServoAngle >= SWEEP_MAX_ANGLE) {
+          // Reached edge of solar panel, reverse direction
+          currentWiperState = STATE_SWEEPING_BACKWARD;
+          Serial.println(F(" [WIPER] Reached panel edge (170 deg). Returning to home..."));
+        }
+      }
+      break;
+
+    case STATE_SWEEPING_BACKWARD:
+      if (now - lastServoStepTime >= (unsigned long)SWEEP_STEP_DELAY_MS) {
+        lastServoStepTime = now;
+        currentServoAngle--;
+        wiperServo.write(currentServoAngle);
+
+        // Calculate progress: 50% to 100% during return stroke
+        int progress = map(currentServoAngle, SWEEP_MAX_ANGLE, SWEEP_HOME_ANGLE, 50, 100);
+        if (progress != lastReportedProgress && progress % 10 == 0) {
+          lastReportedProgress = progress;
+          publishWiperStatus("WIPING", progress, 0);
+        }
+
+        if (currentServoAngle <= SWEEP_HOME_ANGLE) {
+          // Finished full forward & backward sweep!
+          Serial.println(F(" [WIPER] Sweep completed successfully. Detaching servo PWM to rest motor."));
+          
+          // CRITICAL: Detach servo so motor does not draw current or heat up while resting
+          wiperServo.detach();
+
+          // Enter mandatory safety cooldown
+          currentWiperState = STATE_COOLDOWN;
+          cooldownStartTime = millis();
+          publishWiperStatus("COOLDOWN", 100, WIPER_COOLDOWN_SEC);
+        }
+      }
+      break;
+
+    case STATE_COOLDOWN: {
+      unsigned long elapsedSec = (now - cooldownStartTime) / 1000;
+      if (elapsedSec >= (unsigned long)WIPER_COOLDOWN_SEC) {
+        Serial.println(F(" [WIPER] Cooldown finished. SG90 Wiper actuator is now IDLE and ready."));
+        currentWiperState = STATE_IDLE;
+        publishWiperStatus("IDLE", 0, 0);
+      }
+      break;
+    }
+
+    case STATE_IDLE:
+    case STATE_STOPPED:
+    case STATE_FAULT:
+    default:
+      // Standby - nothing to step
+      break;
+  }
+}
+
+// ======================================================================================
+// TELEMETRY & STATUS PUBLISHING
+// ======================================================================================
+void publishWiperStatus(const char* stateStr, int progress, int cooldownRemaining) {
+  StaticJsonDocument<256> doc;
+  doc["state"] = stateStr;
+  doc["progress"] = progress;
+  doc["angle"] = currentServoAngle;
+  doc["cooldown_remaining_sec"] = cooldownRemaining;
+  doc["sweep_count"] = sweepExecutionCount;
+  doc["timestamp_ms"] = millis();
+
+  char buffer[256];
+  serializeJson(doc, buffer);
+  mqttClient.publish(TOPIC_WIPER_STATUS, buffer);
+
+  Serial.printf(" [MQTT TX -> %s]: %s\n", TOPIC_WIPER_STATUS, buffer);
+}
+
+void publishTelemetry() {
+  // Request temperature from DS18B20 on GPIO 4
+  tempSensors.requestTemperatures();
+  float tempC = tempSensors.getTempCByIndex(0);
+
+  bool sensorValid = (tempC > -55.0 && tempC < 125.0 && tempC != 85.0);
+  if (!sensorValid) {
+    // Sensor disconnected or read error
+    tempC = 0.0;
+  }
+
+  StaticJsonDocument<256> doc;
+  doc["temperature"] = serialized(String(tempC, 1));
+  doc["sensor_connected"] = sensorValid;
+  doc["wiper_state"] = (currentWiperState == STATE_SWEEPING_FORWARD || currentWiperState == STATE_SWEEPING_BACKWARD) ? "WIPING" :
+                       (currentWiperState == STATE_COOLDOWN) ? "COOLDOWN" :
+                       (currentWiperState == STATE_STOPPED) ? "STOPPED" : "IDLE";
+  doc["rssi"] = WiFi.RSSI();
+  doc["uptime_s"] = millis() / 1000;
+  doc["ip"] = WiFi.localIP().toString();
+
+  char buffer[256];
+  serializeJson(doc, buffer);
+  mqttClient.publish(TOPIC_TELEMETRY, buffer);
+
+  Serial.printf(" [TELEMETRY] Temp: %.1f C (Valid: %s) | Wiper: %s | RSSI: %d dBm\n",
+                tempC, sensorValid ? "YES" : "NO",
+                (const char*)doc["wiper_state"], WiFi.RSSI());
+}
+
+void publishDeviceStatus(bool isOnline) {
+  StaticJsonDocument<256> doc;
+  doc["online"] = isOnline;
+  doc["device"] = "SolarGuard-ESP32";
+  doc["firmware_version"] = "1.2.0-wiper-only";
+  doc["ip"] = WiFi.localIP().toString();
+  doc["mac"] = WiFi.macAddress();
+  doc["rssi"] = WiFi.RSSI();
+
+  char buffer[256];
+  serializeJson(doc, buffer);
+  mqttClient.publish(TOPIC_DEVICE_STATUS, buffer, true); // Retained message
+}

@@ -1,12 +1,38 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { INITIAL_PANELS } from '../data/initialData';
 import { DEFAULT_SETTINGS } from '../data/defaultSettings';
+import solarGuardMqtt from '../services/mqttClient';
 
 const SolarGuardContext = createContext(null);
 
 export function SolarGuardProvider({ children }) {
-  // Settings
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  // Settings with LocalStorage Persistence
+  const [settings, setSettingsState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('solarguard_settings');
+      if (saved) {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch {
+      // Fallback
+    }
+    return DEFAULT_SETTINGS;
+  });
+
+  const setSettings = (newSettings) => {
+    setSettingsState((prev) => {
+      const updated = typeof newSettings === 'function' ? newSettings(prev) : { ...prev, ...newSettings };
+      try {
+        localStorage.setItem('solarguard_settings', JSON.stringify(updated));
+      } catch {
+        // Ignore storage errors
+      }
+      return updated;
+    });
+  };
+
+  // EMQX MQTT Connection Status
+  const [mqttStatus, setMqttStatus] = useState('disconnected');
 
   // Telemetry & Hardware State (Starts in honest standby - zero fake data)
   const [panels, setPanels] = useState(INITIAL_PANELS);
@@ -125,8 +151,169 @@ export function SolarGuardProvider({ children }) {
     }
   }, [cleaningState.status, cleaningState.cooldownRemaining]);
 
-  // Real Hardware Polling (Attempts genuine connection to ESP32 gateway endpoint if reachable)
+  // EMQX MQTT Connection & Real-Time ESP32 Synchronization
   useEffect(() => {
+    if (!settings.mqttEnabled) {
+      solarGuardMqtt.disconnect();
+      setMqttStatus('disconnected');
+      return;
+    }
+
+    solarGuardMqtt.connect({
+      broker: settings.mqttBroker,
+      port: settings.mqttPort,
+      useTls: settings.mqttUseTls,
+      path: settings.mqttPath || '/mqtt',
+      username: settings.mqttUsername,
+      password: settings.mqttPassword,
+      topicPrefix: settings.mqttTopicPrefix || 'solarguard'
+    });
+
+    const unsubscribe = solarGuardMqtt.subscribeListener((event, data) => {
+      if (event === 'status') {
+        setMqttStatus(data.status);
+        if (data.status === 'connected') {
+          setSystemStatus((prev) => ({
+            ...prev,
+            esp32: { ...prev.esp32, connected: true, via: 'EMQX' }
+          }));
+        } else if (data.status === 'error' || data.status === 'disconnected') {
+          setSystemStatus((prev) => ({
+            ...prev,
+            esp32: { ...prev.esp32, connected: false }
+          }));
+        }
+      } else if (event === 'message') {
+        const { topic, payload } = data;
+        const prefix = settings.mqttTopicPrefix || 'solarguard';
+
+        // 1. ESP32 Heartbeat / Device status
+        if (topic === `${prefix}/status`) {
+          setSystemStatus((prev) => ({
+            ...prev,
+            esp32: {
+              connected: payload.online !== false,
+              ip: payload.ip || settings.mqttBroker,
+              latencyMs: 15,
+              lastSeen: new Date().toLocaleTimeString(),
+              via: 'EMQX'
+            }
+          }));
+        }
+
+        // 2. DS18B20 Telemetry
+        if (topic === `${prefix}/telemetry`) {
+          setLastUpdated(new Date());
+          setSystemStatus((prev) => ({
+            ...prev,
+            esp32: {
+              connected: true,
+              ip: payload.ip || prev.esp32.ip || 'ESP32 (EMQX)',
+              latencyMs: 15,
+              lastSeen: new Date().toLocaleTimeString(),
+              via: 'EMQX'
+            }
+          }));
+
+          const tempNum = typeof payload.temperature === 'number' 
+            ? payload.temperature 
+            : parseFloat(payload.temperature);
+
+          if (!isNaN(tempNum)) {
+            const tempVal = parseFloat(tempNum.toFixed(1));
+            setTemperature(tempVal);
+
+            // Record genuine telemetry point
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            setTelemetryHistory((prev) => {
+              const newPoint = {
+                timestamp: now.toISOString(),
+                timeFormatted: timeStr,
+                panel1_power: 0,
+                panel2_power: 0,
+                panel3_power: 0,
+                total_power: 0,
+                temperature: tempVal,
+              };
+              return [...prev.slice(-29), newPoint];
+            });
+
+            // Temperature threshold check
+            if (tempVal >= settings.tempAlertThresholdC) {
+              addAlert({
+                type: 'HIGH_TEMPERATURE',
+                severity: 'warning',
+                panelId: null,
+                title: `High Surface Temperature: ${tempVal}°C`,
+                message: `DS18B20 sensor on GPIO 4 reported ${tempVal}°C, which exceeds the configured warning threshold (${settings.tempAlertThresholdC}°C).`,
+                recommendedAction: 'Inspect thermal conditions to prevent cell stress.'
+              });
+            }
+          }
+        }
+
+        // 3. Wiper Status from ESP32
+        if (topic === `${prefix}/wiper/status`) {
+          const rawState = (payload.state || payload.status || 'idle').toLowerCase();
+          const progress = typeof payload.progress === 'number' ? payload.progress : 0;
+          const cooldownSec = typeof payload.cooldown_remaining_sec === 'number' 
+            ? payload.cooldown_remaining_sec 
+            : settings.wiperCooldownSec || 45;
+
+          setCleaningState((prev) => {
+            const isTransitionToCooldown = prev.status === 'wiping' && (rawState === 'cooldown' || rawState === 'idle');
+            let updatedHistory = prev.history;
+
+            if (isTransitionToCooldown) {
+              const newLog = {
+                id: `CLN-${Date.now().toString().slice(-4)}`,
+                timestamp: new Date().toISOString(),
+                triggerType: payload.trigger || 'EMQX Wiper Sweep',
+                durationMs: payload.duration_ms || settings.wiperDurationMs || 1800,
+                sweepAngle: `${settings.minSweepAngle || 10}° ➔ ${settings.maxSweepAngle || 170}°`,
+                status: 'Completed',
+                notes: 'Physical SG90 sweep completed on ESP32 via EMQX.'
+              };
+              updatedHistory = [newLog, ...prev.history];
+            }
+
+            return {
+              ...prev,
+              status: rawState,
+              progress: rawState === 'wiping' ? progress : (rawState === 'cooldown' ? 100 : 0),
+              cooldownRemaining: rawState === 'cooldown' ? cooldownSec : (rawState === 'idle' ? 0 : prev.cooldownRemaining),
+              lastCleaned: isTransitionToCooldown ? new Date().toISOString() : prev.lastCleaned,
+              history: updatedHistory
+            };
+          });
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      solarGuardMqtt.disconnect();
+    };
+  }, [
+    settings.mqttEnabled, 
+    settings.mqttBroker, 
+    settings.mqttPort, 
+    settings.mqttUseTls, 
+    settings.mqttPath,
+    settings.mqttUsername, 
+    settings.mqttPassword, 
+    settings.mqttTopicPrefix, 
+    settings.tempAlertThresholdC, 
+    settings.wiperCooldownSec, 
+    settings.wiperDurationMs, 
+    settings.minSweepAngle, 
+    settings.maxSweepAngle
+  ]);
+
+  // Fallback Hardware Polling (Used only if MQTT is disabled and REST endpoint is set)
+  useEffect(() => {
+    if (settings.mqttEnabled) return;
     const endpoint = settings.esp32Endpoint;
     if (!endpoint) return;
 
@@ -170,7 +357,7 @@ export function SolarGuardProvider({ children }) {
             return [...prev.slice(-29), newPoint];
           });
         }
-      } catch (err) {
+      } catch {
         // Hardware offline
         if (isMounted) {
           setSystemStatus((prev) => ({
@@ -187,7 +374,7 @@ export function SolarGuardProvider({ children }) {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [settings.esp32Endpoint, settings.telemetryIntervalMs]);
+  }, [settings.mqttEnabled, settings.esp32Endpoint, settings.telemetryIntervalMs]);
 
   // Wiper Trigger Function
   const triggerWipe = (triggerType = 'Manual') => {
@@ -220,6 +407,11 @@ export function SolarGuardProvider({ children }) {
       return { success: false, reason: 'COOLDOWN_ACTIVE' };
     }
 
+    // Dispatch command to ESP32 over EMQX MQTT if enabled
+    if (settings.mqttEnabled) {
+      solarGuardMqtt.sendWiperCommand('WIPE', duration);
+    }
+
     // Begin wipe sequence
     setCleaningState((prev) => ({
       ...prev,
@@ -249,9 +441,9 @@ export function SolarGuardProvider({ children }) {
           timestamp: new Date().toISOString(),
           triggerType,
           durationMs: duration,
-          sweepAngle: `${settings.minSweepAngle || 0}° ➔ ${settings.maxSweepAngle || 180}°`,
+          sweepAngle: `${settings.minSweepAngle || 10}° ➔ ${settings.maxSweepAngle || 170}°`,
           status: 'Completed',
-          notes: `${triggerType} sweep executed nominally across solar surface.`
+          notes: `${triggerType} sweep executed across solar surface.`
         };
 
         setCleaningState((prev) => ({
@@ -273,6 +465,10 @@ export function SolarGuardProvider({ children }) {
     if (wipeIntervalRef.current) clearInterval(wipeIntervalRef.current);
     if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current);
 
+    if (settings.mqttEnabled) {
+      solarGuardMqtt.sendEmergencyStop();
+    }
+
     setCleaningState((prev) => ({
       ...prev,
       status: 'stopped',
@@ -291,6 +487,10 @@ export function SolarGuardProvider({ children }) {
   };
 
   const resetWiperFault = () => {
+    if (settings.mqttEnabled) {
+      solarGuardMqtt.sendResetFault();
+    }
+
     setCleaningState((prev) => ({
       ...prev,
       status: 'idle',
@@ -474,6 +674,8 @@ export function SolarGuardProvider({ children }) {
         modelStatus,
         checkBackendStatus,
         predictLiveImage,
+        mqttStatus,
+        solarGuardMqtt,
       }}
     >
       {children}

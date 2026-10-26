@@ -93,6 +93,19 @@ def get_db_status():
     from .db.mongodb import db_client
     return db_client.get_status()
 
+@app.get("/api/mqtt/config", tags=["MQTT"])
+def get_mqtt_config():
+    from .config import EMQX_BROKER, EMQX_PORT, EMQX_TOPIC_PREFIX
+    return {
+        "broker": EMQX_BROKER,
+        "tls_port": EMQX_PORT,
+        "websocket_port": 8084,
+        "topic_prefix": EMQX_TOPIC_PREFIX,
+        "platform": "EMQX Cloud",
+        "status": "configured"
+    }
+
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -54,7 +54,7 @@ export default function Header({ activeTab, setActiveTab }) {
             <Wifi className={`w-3.5 h-3.5 ${systemStatus.esp32.connected ? 'text-blue-600' : 'text-slate-400'}`} />
             <span className="text-slate-500">ESP32:</span>
             <span className={`font-bold ${systemStatus.esp32.connected ? 'text-blue-600' : 'text-slate-500'}`}>
-              {systemStatus.esp32.connected ? 'Online' : 'Standby'}
+              {systemStatus.esp32.connected ? (systemStatus.esp32.via ? `Online (${systemStatus.esp32.via})` : 'Online') : 'Standby'}
             </span>
           </div>
 
