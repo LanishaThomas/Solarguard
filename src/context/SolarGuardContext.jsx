@@ -100,7 +100,7 @@ export function SolarGuardProvider({ children }) {
     progress: 0,
     cooldownRemaining: 0,
     lastCleaned: null,
-    autoCleaningEnabled: false,
+    autoCleaningEnabled: true,
     history: []
   });
 
@@ -412,9 +412,21 @@ export function SolarGuardProvider({ children }) {
       return { success: false, reason: 'COOLDOWN_ACTIVE' };
     }
 
+    const duration = settings.wiperDurationMs || 1800;
+
     // Dispatch command to ESP32 over EMQX MQTT if enabled
     if (settings.mqttEnabled) {
-      solarGuardMqtt.sendWiperCommand('WIPE', duration);
+      const dispatched = solarGuardMqtt.sendWiperCommand('WIPE', duration);
+      if (!dispatched) {
+        addAlert({
+          type: 'MQTT_DELIVERY_FAILED',
+          severity: 'warning',
+          panelId: null,
+          title: 'MQTT Command Queued',
+          message: 'Connecting to EMQX cloud broker...',
+          recommendedAction: 'Check EMQX status in settings.'
+        });
+      }
     }
 
     // Begin wipe sequence
@@ -424,7 +436,6 @@ export function SolarGuardProvider({ children }) {
       progress: 0
     }));
 
-    const duration = settings.wiperDurationMs || 1800;
     const intervalMs = 50;
     const steps = duration / intervalMs;
     let stepCount = 0;
@@ -502,6 +513,24 @@ export function SolarGuardProvider({ children }) {
       progress: 0,
       cooldownRemaining: 0
     }));
+  };
+
+  // Direct MQTT Ping / Wiper Test Pulse
+  const sendMqttTestPulse = () => {
+    const duration = settings.wiperDurationMs || 1800;
+    const sent = solarGuardMqtt.sendWiperCommand('WIPE', duration);
+    if (sent) {
+      addAlert({
+        type: 'MQTT_TEST_SENT',
+        severity: 'info',
+        panelId: null,
+        title: 'EMQX Wiper Command Sent',
+        message: 'Published {"command": "WIPE"} to solarguard/wiper/command.',
+        recommendedAction: 'Watch SG90 servo arm or Serial monitor.'
+      });
+      return { success: true, message: 'Command sent to EMQX!' };
+    }
+    return { success: false, message: 'MQTT client not connected.' };
   };
 
   const setInspectionPreset = (preset) => {
@@ -681,6 +710,7 @@ export function SolarGuardProvider({ children }) {
         predictLiveImage,
         mqttStatus,
         solarGuardMqtt,
+        sendMqttTestPulse,
       }}
     >
       {children}

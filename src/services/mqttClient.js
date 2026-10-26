@@ -177,6 +177,7 @@ class SolarGuardMqttClient {
     return this.publish('wiper/command', {
       command,
       durationMs,
+      duration_ms: durationMs,
       timestamp: new Date().toISOString()
     });
   }

@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS = {
   wiperCooldownSec: 45,
   minSweepAngle: 10,
   maxSweepAngle: 170,
-  autoCleaningEnabled: false,
+  autoCleaningEnabled: true,
   autoCleanMinConfidence: 0.85,
 
   // Hardware integration stubs
