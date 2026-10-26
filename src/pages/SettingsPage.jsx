@@ -16,11 +16,22 @@ export default function SettingsPage() {
     settings, 
     setSettings,
     modelStatus,
-    backendUrl
+    backendUrl,
+    mqttStatus,
+    mqttLastError,
+    sendMqttTestPulse,
+    systemStatus
   } = useSolarGuard();
 
   const [localSettings, setLocalSettings] = useState(settings);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [testFeedback, setTestFeedback] = useState(null);
+
+  const handleTestPulse = () => {
+    const res = sendMqttTestPulse();
+    setTestFeedback(res);
+    setTimeout(() => setTestFeedback(null), 6000);
+  };
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -363,6 +374,70 @@ export default function SettingsPage() {
               />
               <p className="text-[11px] text-slate-500 mt-1">Default: <code>solarguard</code></p>
             </div>
+          </div>
+
+          {/* Live MQTT Diagnostics & Connection Pulse */}
+          <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  mqttStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
+                  mqttStatus === 'connecting' ? 'bg-amber-400 animate-ping' :
+                  'bg-rose-500'
+                }`}></span>
+                <span className="font-heading font-semibold text-xs uppercase tracking-wider text-slate-200">
+                  Live EMQX Diagnostics &amp; Handshake Console
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-slate-400">
+                WSS: <code>{localSettings.mqttBroker}:{localSettings.mqttPort}/mqtt</code>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+              <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700">
+                <span className="text-slate-400 block text-[11px] uppercase">1. Web App ➔ EMQX Broker:</span>
+                <span className={`font-bold ${
+                  mqttStatus === 'connected' ? 'text-emerald-400' :
+                  mqttStatus === 'connecting' ? 'text-amber-300' :
+                  'text-rose-400'
+                }`}>
+                  {mqttStatus === 'connected' ? 'CONNECTED (TLS 8084)' :
+                   mqttStatus === 'connecting' ? 'CONNECTING...' :
+                   `DISCONNECTED ${mqttLastError ? `(${mqttLastError})` : ''}`}
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700">
+                <span className="text-slate-400 block text-[11px] uppercase">2. ESP32 Microcontroller:</span>
+                <span className={`font-bold ${systemStatus.esp32.connected ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {systemStatus.esp32.connected ? `ONLINE (${systemStatus.esp32.lastSeen || 'active'})` : 'STANDBY (No heartbeat yet)'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+              <p className="text-[11px] text-slate-400 leading-snug">
+                Click the test pulse button to dispatch an immediate <code>WIPE</code> command to <code>solarguard/wiper/command</code> and verify communication.
+              </p>
+              <button
+                type="button"
+                onClick={handleTestPulse}
+                className="w-full sm:w-auto shrink-0 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-heading font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow-sm"
+              >
+                <RotateCw className="w-3.5 h-3.5" /> 🧪 Test Wiper Pulse (MQTT Ping)
+              </button>
+            </div>
+
+            {testFeedback && (
+              <div className={`p-2.5 rounded-lg text-xs font-mono border ${
+                testFeedback.success 
+                  ? 'bg-emerald-950/60 border-emerald-600/50 text-emerald-300' 
+                  : 'bg-rose-950/60 border-rose-600/50 text-rose-300'
+              }`}>
+                {testFeedback.message}
+              </div>
+            )}
           </div>
 
           {/* Pinout hardware mapping summary */}

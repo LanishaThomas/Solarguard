@@ -1,6 +1,6 @@
 /**
  * ======================================================================================
- * SolarGuard IoT — ESP32 Smart Wiper & Temperature Subsystem Firmware
+ * SolarGuard IoT - ESP32 Smart Wiper & Temperature Subsystem Firmware
  * ======================================================================================
  * 
  * Target Microcontroller: ESP32 (ESP32-WROOM-32 / DevKit V1)
@@ -14,7 +14,7 @@
  *  GND       | Breadboard ground rail (COMMON GROUND with 5V external power supply!)
  *  GPIO 21   | Shared SDA line (I2C)
  *  GPIO 22   | Shared SCL line (I2C)
- *  GPIO 4    | DS18B20 1-Wire Data line (requires 4.7 kΩ pull-up resistor to 3V3)
+ *  GPIO 4    | DS18B20 1-Wire Data line (requires 4.7 kOhm pull-up resistor to 3V3)
  *  GPIO 18   | SG90 Servo PWM signal line (Orange/Yellow wire)
  * --------------------------------------------------------------------------------------
  * 
@@ -46,7 +46,7 @@
 // 1. NETWORK & EMQX CLOUD MQTT CONFIGURATION
 // ======================================================================================
 
-// Wi-Fi Credentials — Replace with your Wi-Fi network details
+// Wi-Fi Credentials - Replace with your Wi-Fi network details
 const char* WIFI_SSID     = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
@@ -140,7 +140,7 @@ void setup() {
   delay(500);
 
   Serial.println(F("\n======================================================="));
-  Serial.println(F("     SolarGuard IoT — ESP32 Smart Wiper Firmware     "));
+  Serial.println(F("     SolarGuard IoT - ESP32 Smart Wiper Firmware     "));
   Serial.println(F("======================================================="));
   Serial.printf(" [HW] I2C Pins: SDA=GPIO%d, SCL=GPIO%d\n", PIN_I2C_SDA, PIN_I2C_SCL);
   Serial.printf(" [HW] DS18B20 Temp Sensor: GPIO%d\n", PIN_DS18B20);
@@ -155,17 +155,23 @@ void setup() {
   int deviceCount = tempSensors.getDeviceCount();
   Serial.printf(" [DS18B20] Found %d OneWire temperature sensor(s)\n", deviceCount);
 
-  // Initialize SG90 Servo PWM configuration
+  // Initialize SG90 Servo PWM configuration (allocate all timers for ESP32)
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
   wiperServo.setPeriodHertz(50); // Standard 50Hz servo PWM
 
-  // Move to park position briefly, then detach to eliminate idle jitter & buzz
+  // Physical Startup Self-Test:
+  // Move servo slightly (10 -> 45 -> 10 deg) so user can visibly verify 5V power and GPIO 18 wiring!
+  Serial.println(F(" [SERVO] Running physical startup self-test on GPIO 18 (10 -> 45 -> 10 deg)..."));
   wiperServo.attach(PIN_SG90_SERVO, 500, 2400);
+  wiperServo.write(45);
+  delay(400);
   wiperServo.write(SWEEP_HOME_ANGLE);
   delay(400);
-  wiperServo.detach(); // Detach to protect motor coils when idle
-  Serial.println(F(" [SERVO] SG90 calibrated and parked at home (10 deg). Detached."));
+  wiperServo.detach(); // Detach to protect motor coils from idle heat & buzz
+  Serial.println(F(" [SERVO] Startup test complete! (If wiper moved, 5V power and GPIO 18 are OK)."));
 
   // Connect to Wi-Fi
   setupWiFi();
@@ -270,7 +276,17 @@ void reconnectMQTT() {
       // Send initial status
       publishWiperStatus("IDLE", 0, 0);
     } else {
-      Serial.printf("FAILED (rc=%d). Will retry in 4s.\n", mqttClient.state());
+      int state = mqttClient.state();
+      Serial.printf("FAILED (rc=%d). Will retry in 4s.\n", state);
+      if (state == 4 || state == 5) {
+        Serial.println(F("   [!] ERROR: EMQX Cloud rejected username or password (rc=4 or 5)!"));
+        Serial.println(F("       Go to your EMQX Cloud console > Access Control > Authentication,"));
+        Serial.println(F("       and make sure MQTT_USER and MQTT_PASSWORD match!"));
+      } else if (state == -2) {
+        Serial.println(F("   [!] ERROR: Cannot reach EMQX broker host (rc=-2). Check Wi-Fi internet access or DNS."));
+      } else if (state == -4) {
+        Serial.println(F("   [!] ERROR: Connection timeout (rc=-4). Check broker address and port 8883."));
+      }
     }
   }
 }

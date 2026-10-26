@@ -139,21 +139,32 @@ class SolarGuardMqttClient {
   }
 
   /**
+   * Check if client is currently connected to broker
+   */
+  isConnected() {
+    return !!(this.client && this.client.connected);
+  }
+
+  /**
    * Publish a message to a sub-topic under the configured prefix
    */
   publish(subTopic, payload, qos = 0) {
-    if (!this.client || !this.client.connected) {
-      return false;
-    }
-
     const prefix = this.config?.topicPrefix || 'solarguard';
     const cleanSubTopic = subTopic.startsWith('/') ? subTopic.slice(1) : subTopic;
     const fullTopic = `${prefix}/${cleanSubTopic}`;
+
+    if (!this.client || !this.client.connected) {
+      console.warn(`[MQTT] Cannot publish to ${fullTopic}: Client is not connected (status=${this.status})`);
+      return false;
+    }
+
     const payloadStr = typeof payload === 'object' ? JSON.stringify(payload) : String(payload);
 
     this.client.publish(fullTopic, payloadStr, { qos }, (err) => {
       if (err) {
         console.error(`[MQTT] Failed to publish to ${fullTopic}:`, err);
+      } else {
+        console.log(`[MQTT TX] Successfully published to ${fullTopic}: ${payloadStr}`);
       }
     });
     return true;

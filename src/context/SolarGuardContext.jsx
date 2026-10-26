@@ -33,6 +33,7 @@ export function SolarGuardProvider({ children }) {
 
   // EMQX MQTT Connection Status
   const [mqttStatus, setMqttStatus] = useState('disconnected');
+  const [mqttLastError, setMqttLastError] = useState(null);
 
   // Telemetry & Hardware State (Starts in honest standby - zero fake data)
   const [panels, setPanels] = useState(INITIAL_PANELS);
@@ -173,11 +174,15 @@ export function SolarGuardProvider({ children }) {
       if (event === 'status') {
         setMqttStatus(data.status);
         if (data.status === 'connected') {
+          setMqttLastError(null);
+          console.log('[App] Connected to EMQX Cloud MQTT broker');
+        } else if (data.status === 'error') {
+          setMqttLastError(data.error || 'Connection refused or authentication failed');
           setSystemStatus((prev) => ({
             ...prev,
-            esp32: { ...prev.esp32, connected: true, via: 'EMQX' }
+            esp32: { ...prev.esp32, connected: false }
           }));
-        } else if (data.status === 'error' || data.status === 'disconnected') {
+        } else if (data.status === 'disconnected' || data.status === 'offline') {
           setSystemStatus((prev) => ({
             ...prev,
             esp32: { ...prev.esp32, connected: false }
@@ -215,8 +220,8 @@ export function SolarGuardProvider({ children }) {
             }
           }));
 
-          const tempNum = typeof payload.temperature === 'number' 
-            ? payload.temperature 
+          const tempNum = typeof payload.temperature === 'number'
+            ? payload.temperature
             : parseFloat(payload.temperature);
 
           if (!isNaN(tempNum)) {
@@ -257,8 +262,8 @@ export function SolarGuardProvider({ children }) {
         if (topic === `${prefix}/wiper/status`) {
           const rawState = (payload.state || payload.status || 'idle').toLowerCase();
           const progress = typeof payload.progress === 'number' ? payload.progress : 0;
-          const cooldownSec = typeof payload.cooldown_remaining_sec === 'number' 
-            ? payload.cooldown_remaining_sec 
+          const cooldownSec = typeof payload.cooldown_remaining_sec === 'number'
+            ? payload.cooldown_remaining_sec
             : settings.wiperCooldownSec || 45;
 
           setCleaningState((prev) => {
@@ -296,18 +301,18 @@ export function SolarGuardProvider({ children }) {
       solarGuardMqtt.disconnect();
     };
   }, [
-    settings.mqttEnabled, 
-    settings.mqttBroker, 
-    settings.mqttPort, 
-    settings.mqttUseTls, 
+    settings.mqttEnabled,
+    settings.mqttBroker,
+    settings.mqttPort,
+    settings.mqttUseTls,
     settings.mqttPath,
-    settings.mqttUsername, 
-    settings.mqttPassword, 
-    settings.mqttTopicPrefix, 
-    settings.tempAlertThresholdC, 
-    settings.wiperCooldownSec, 
-    settings.wiperDurationMs, 
-    settings.minSweepAngle, 
+    settings.mqttUsername,
+    settings.mqttPassword,
+    settings.mqttTopicPrefix,
+    settings.tempAlertThresholdC,
+    settings.wiperCooldownSec,
+    settings.wiperDurationMs,
+    settings.minSweepAngle,
     settings.maxSweepAngle
   ]);
 
@@ -644,9 +649,9 @@ export function SolarGuardProvider({ children }) {
         settings,
         setSettings,
         isDemoMode: false,
-        setIsDemoMode: () => {},
+        setIsDemoMode: () => { },
         activeScenario: 'normal',
-        setActiveScenario: () => {},
+        setActiveScenario: () => { },
         panels,
         temperature,
         totalPower,

@@ -19,6 +19,11 @@ dist-ssr
 .env.*.local
 !.env.example
 
+# Firmware with private credentials (Wi-Fi & MQTT)
+firmware/*.ino
+!firmware/*.ino.example
+firmware/solarguard_esp32_wiper.ino
+
 # Python
 __pycache__/
 *.py[cod]
