@@ -19,7 +19,9 @@ export default function Header({ activeTab, setActiveTab }) {
     setMobilePreviewMode,
     cleaningState,
     triggerWipe,
-    modelStatus
+    modelStatus,
+    mqttStatus,
+    mqttStats,
   } = useSolarGuard();
 
   return (
@@ -49,12 +51,27 @@ export default function Header({ activeTab, setActiveTab }) {
         </div>
 
         {/* Center / System Status Indicators */}
-        <div className="hidden lg:flex items-center gap-3 text-xs font-mono">
+        <div className="hidden lg:flex items-center gap-2.5 text-xs font-mono">
+          {/* Live MQTT Giving & Taking Telemetry Pill */}
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 text-white border border-slate-700 shadow-xs">
+            <span className={`w-2 h-2 rounded-full ${mqttStatus === 'connected' ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+            <span className="text-[10px] font-bold text-slate-300 uppercase">MQTT</span>
+            <span className="text-slate-600">|</span>
+            <span className="flex items-center gap-1" title="App giving data to MQTT (TX)">
+              <span className={`w-1.5 h-1.5 rounded-full ${mqttStats.isTxBlinking ? 'bg-amber-400 animate-ping' : 'bg-amber-500/70'}`} />
+              <span className="text-amber-300 font-bold">TX {mqttStats.txCount}</span>
+            </span>
+            <span className="flex items-center gap-1" title="App taking data from MQTT (RX)">
+              <span className={`w-1.5 h-1.5 rounded-full ${mqttStats.isRxBlinking ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500/70'}`} />
+              <span className="text-emerald-300 font-bold">RX {mqttStats.rxCount}</span>
+            </span>
+          </div>
+
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
             <Wifi className={`w-3.5 h-3.5 ${systemStatus.esp32.connected ? 'text-blue-600' : 'text-slate-400'}`} />
             <span className="text-slate-500">ESP32:</span>
             <span className={`font-bold ${systemStatus.esp32.connected ? 'text-blue-600' : 'text-slate-500'}`}>
-              {systemStatus.esp32.connected ? 'Online' : 'Standby'}
+              {systemStatus.esp32.connected ? (systemStatus.esp32.via ? `Online (${systemStatus.esp32.via})` : 'Online') : 'Standby'}
             </span>
           </div>
 
@@ -64,12 +81,6 @@ export default function Header({ activeTab, setActiveTab }) {
             <span className={`font-bold ${modelStatus.isConnected ? 'text-blue-600' : 'text-slate-500'}`}>
               {modelStatus.isConnected ? 'Loaded' : 'Ready'}
             </span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700">
-            <Database className="w-3.5 h-3.5 text-blue-600" />
-            <span className="text-slate-500">DB:</span>
-            <span className="font-bold text-slate-700">.env</span>
           </div>
         </div>
 

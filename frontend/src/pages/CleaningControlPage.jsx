@@ -46,7 +46,11 @@ export default function CleaningControlPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-mono font-medium">
+            <span className={`w-2 h-2 rounded-full ${systemStatus.esp32.connected ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`}></span>
+            <span>ESP32 (GPIO 18): {systemStatus.esp32.connected ? 'EMQX Synced' : 'Ready'}</span>
+          </div>
           <StatusBadge status={cleaningState.status} text={cleaningState.status.toUpperCase()} size="md" />
         </div>
       </div>
