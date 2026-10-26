@@ -111,7 +111,9 @@ class SolarGuardMqttClient {
           payloadJson = { raw: payloadStr };
         }
 
-        this.notifyListeners('message', { topic, payload: payloadJson, raw: payloadStr });
+        const nowIso = new Date().toISOString();
+        this.notifyListeners('message', { topic, payload: payloadJson, raw: payloadStr, timestamp: nowIso });
+        this.notifyListeners('rx', { topic, payload: payloadJson, raw: payloadStr, timestamp: nowIso });
       });
 
       this.client.on('error', (err) => {
@@ -152,19 +154,22 @@ class SolarGuardMqttClient {
     const prefix = this.config?.topicPrefix || 'solarguard';
     const cleanSubTopic = subTopic.startsWith('/') ? subTopic.slice(1) : subTopic;
     const fullTopic = `${prefix}/${cleanSubTopic}`;
+    const payloadStr = typeof payload === 'object' ? JSON.stringify(payload) : String(payload);
+    const nowIso = new Date().toISOString();
 
     if (!this.client || !this.client.connected) {
       console.warn(`[MQTT] Cannot publish to ${fullTopic}: Client is not connected (status=${this.status})`);
+      this.notifyListeners('tx', { topic: fullTopic, payload, raw: payloadStr, success: false, error: 'Client not connected to EMQX', timestamp: nowIso });
       return false;
     }
-
-    const payloadStr = typeof payload === 'object' ? JSON.stringify(payload) : String(payload);
 
     this.client.publish(fullTopic, payloadStr, { qos }, (err) => {
       if (err) {
         console.error(`[MQTT] Failed to publish to ${fullTopic}:`, err);
+        this.notifyListeners('tx', { topic: fullTopic, payload, raw: payloadStr, success: false, error: err.message, timestamp: new Date().toISOString() });
       } else {
         console.log(`[MQTT TX] Successfully published to ${fullTopic}: ${payloadStr}`);
+        this.notifyListeners('tx', { topic: fullTopic, payload, raw: payloadStr, success: true, timestamp: new Date().toISOString() });
       }
     });
     return true;

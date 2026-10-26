@@ -11,7 +11,16 @@ export function SolarGuardProvider({ children }) {
     try {
       const saved = localStorage.getItem('solarguard_settings');
       if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        const merged = { ...DEFAULT_SETTINGS, ...parsed };
+        // Auto-upgrade stale broker or empty credentials
+        if (!merged.mqttUsername || !merged.mqttPassword || merged.mqttBroker?.includes('hivemq')) {
+          merged.mqttBroker = DEFAULT_SETTINGS.mqttBroker;
+          merged.mqttPort = DEFAULT_SETTINGS.mqttPort;
+          merged.mqttUsername = DEFAULT_SETTINGS.mqttUsername || 'solarguard';
+          merged.mqttPassword = DEFAULT_SETTINGS.mqttPassword || 'Lanisha@7606';
+        }
+        return merged;
       }
     } catch {
       // Fallback
@@ -34,6 +43,19 @@ export function SolarGuardProvider({ children }) {
   // EMQX MQTT Connection Status
   const [mqttStatus, setMqttStatus] = useState('disconnected');
   const [mqttLastError, setMqttLastError] = useState(null);
+
+  // Live MQTT Traffic Monitor (Giving & Taking Data)
+  const [mqttTraffic, setMqttTraffic] = useState([]);
+  const [mqttStats, setMqttStats] = useState({
+    txCount: 0,
+    rxCount: 0,
+    lastTx: null,
+    lastRx: null,
+    isTxBlinking: false,
+    isRxBlinking: false,
+  });
+
+  const clearMqttTraffic = () => setMqttTraffic([]);
 
   // Telemetry & Hardware State (Starts in honest standby - zero fake data)
   const [panels, setPanels] = useState(INITIAL_PANELS);
@@ -161,12 +183,12 @@ export function SolarGuardProvider({ children }) {
     }
 
     solarGuardMqtt.connect({
-      broker: settings.mqttBroker,
-      port: settings.mqttPort,
-      useTls: settings.mqttUseTls,
+      broker: settings.mqttBroker || DEFAULT_SETTINGS.mqttBroker,
+      port: settings.mqttPort || DEFAULT_SETTINGS.mqttPort,
+      useTls: settings.mqttUseTls !== false,
       path: settings.mqttPath || '/mqtt',
-      username: settings.mqttUsername,
-      password: settings.mqttPassword,
+      username: (settings.mqttUsername && settings.mqttUsername.trim().length > 0) ? settings.mqttUsername : 'solarguard',
+      password: (settings.mqttPassword && settings.mqttPassword.trim().length > 0) ? settings.mqttPassword : 'Lanisha@7606',
       topicPrefix: settings.mqttTopicPrefix || 'solarguard'
     });
 
@@ -188,6 +210,51 @@ export function SolarGuardProvider({ children }) {
             esp32: { ...prev.esp32, connected: false }
           }));
         }
+      } else if (event === 'tx') {
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setMqttStats((prev) => ({
+          ...prev,
+          txCount: prev.txCount + 1,
+          lastTx: timeStr,
+          isTxBlinking: true
+        }));
+        setTimeout(() => setMqttStats((p) => ({ ...p, isTxBlinking: false })), 400);
+
+        setMqttTraffic((prev) => [
+          {
+            id: `TX-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+            dir: 'TX',
+            topic: data.topic,
+            payload: data.payload,
+            raw: data.raw,
+            success: data.success,
+            error: data.error,
+            time: timeStr
+          },
+          ...prev.slice(0, 49)
+        ]);
+      } else if (event === 'rx') {
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setMqttStats((prev) => ({
+          ...prev,
+          rxCount: prev.rxCount + 1,
+          lastRx: timeStr,
+          isRxBlinking: true
+        }));
+        setTimeout(() => setMqttStats((p) => ({ ...p, isRxBlinking: false })), 400);
+
+        setMqttTraffic((prev) => [
+          {
+            id: `RX-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+            dir: 'RX',
+            topic: data.topic,
+            payload: data.payload,
+            raw: data.raw,
+            success: true,
+            time: timeStr
+          },
+          ...prev.slice(0, 49)
+        ]);
       } else if (event === 'message') {
         const { topic, payload } = data;
         const prefix = settings.mqttTopicPrefix || 'solarguard';
@@ -711,6 +778,9 @@ export function SolarGuardProvider({ children }) {
         mqttStatus,
         solarGuardMqtt,
         sendMqttTestPulse,
+        mqttTraffic,
+        mqttStats,
+        clearMqttTraffic,
       }}
     >
       {children}

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { formatDateFull } from '../utils/formatters';
 import StatusBadge from '../components/common/StatusBadge';
+import MqttLiveConsole from '../components/common/MqttLiveConsole';
 
 export default function CameraDetectionPage() {
   const { 
@@ -918,30 +919,64 @@ export default function CameraDetectionPage() {
               </button>
 
               {/* Hardware Connection & Diagnostic Handshake Pill */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${systemStatus.esp32.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                  <div className="truncate">
-                    <span className="font-semibold text-slate-700">ESP32: </span>
-                    <span className={`font-mono text-[11px] font-bold ${systemStatus.esp32.connected ? 'text-emerald-700' : 'text-slate-500'}`}>
-                      {systemStatus.esp32.connected ? `Online (${systemStatus.esp32.lastSeen || 'EMQX Synced'})` : 'Standby (No heartbeat yet)'}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${mqttStatus === 'connected' ? 'bg-emerald-500' : 'bg-rose-500 animate-ping'}`} />
+                    <span className="font-semibold text-slate-700">EMQX Broker:</span>
+                    <span className={`font-mono text-[11px] font-bold ${mqttStatus === 'connected' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {mqttStatus === 'connected' ? 'Connected' : 'Disconnected'}
                     </span>
                   </div>
+                  {mqttStatus !== 'connected' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        solarGuardMqtt.connect({
+                          broker: 'v20f2113.ala.asia-southeast1.emqxsl.com',
+                          port: 8084,
+                          useTls: true,
+                          path: '/mqtt',
+                          username: 'solarguard',
+                          password: 'Lanisha@7606',
+                          topicPrefix: 'solarguard'
+                        });
+                      }}
+                      className="text-[11px] text-blue-600 font-bold underline cursor-pointer"
+                    >
+                      Connect Now
+                    </button>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={sendMqttTestPulse}
-                  title="Send a 1-second test command to verify ESP32 Wiper connection"
-                  className="shrink-0 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold text-[11px] transition shadow-xs flex items-center gap-1 cursor-pointer"
-                >
-                  <Send className="w-3 h-3 text-blue-600" />
-                  <span>Test Pulse</span>
-                </button>
+
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${systemStatus.esp32.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                    <div className="truncate">
+                      <span className="font-semibold text-slate-700">ESP32: </span>
+                      <span className={`font-mono text-[11px] font-bold ${systemStatus.esp32.connected ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        {systemStatus.esp32.connected ? `Online (${systemStatus.esp32.lastSeen || 'EMQX Synced'})` : 'Standby (Awaiting packet)'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={sendMqttTestPulse}
+                    title="Send a 1-second test command to verify ESP32 Wiper connection"
+                    className="shrink-0 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] transition shadow-xs flex items-center gap-1 cursor-pointer"
+                  >
+                    <Send className="w-3 h-3 text-white" />
+                    <span>Test Pulse</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Real-Time MQTT Packet Traffic Monitor (Data Taking & Giving) */}
+      <MqttLiveConsole title="EMQX Cloud Real-Time MQTT Packet Stream (Taking & Giving Data)" defaultExpanded={true} />
 
       {/* Past Inspections Log Table */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm">

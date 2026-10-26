@@ -282,6 +282,8 @@ export default function SettingsPage() {
                   mqttPort: 8084,
                   mqttPath: '/mqtt',
                   mqttUseTls: true,
+                  mqttUsername: 'solarguard',
+                  mqttPassword: 'Lanisha@7606',
                   mqttTopicPrefix: 'solarguard'
                 });
               }}
