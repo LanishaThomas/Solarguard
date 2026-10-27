@@ -65,7 +65,7 @@ export function evaluatePanelHealth(panel, allPanels, settings = {}) {
 
   // If illuminated under open-circuit (current = 0, but voltage present from flashlight)
   if (medianPower < minSunlightW && maxVoltage >= 0.40) {
-    if (panel.voltage_v < maxVoltage * 0.5) {
+    if (panel.voltage_v < maxVoltage * 0.88 || (maxVoltage - panel.voltage_v) >= 0.07) {
       const dropPct = Math.round(((maxVoltage - panel.voltage_v) / maxVoltage) * 100);
       return {
         status: 'warning',
