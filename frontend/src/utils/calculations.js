@@ -21,7 +21,8 @@ export function calculateMedian(values) {
  * Only evaluate if median power is above min sunlight threshold (e.g. 0.2W)
  */
 export function evaluatePanelHealth(panel, allPanels, settings = {}) {
-  const minSunlightW = settings.minSunlightW || 0.2;
+  // Sensitive to mobile phone flashlight / small solar panels (default 2 mW / 0.002 W)
+  const minSunlightW = settings.minSunlightW != null ? settings.minSunlightW : 0.002;
   const dropRatio = settings.peerDropThreshold || 0.7; // Below 70% of median (i.e. >30% drop)
 
   const powers = allPanels.map((p) => p.power_w);

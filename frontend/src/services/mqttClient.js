@@ -90,7 +90,9 @@ class SolarGuardMqttClient {
         const topics = [
           `${topicPrefix}/telemetry`,
           `${topicPrefix}/wiper/status`,
-          `${topicPrefix}/status`
+          `${topicPrefix}/status`,
+          `${topicPrefix}/alerts`,
+          `${topicPrefix}/temperature/alert`
         ];
 
         this.client.subscribe(topics, (err) => {

@@ -23,15 +23,15 @@ export default function CleaningControlPage() {
     toggleAutoCleaning, 
     inspection,
     settings,
-    panels 
+    panels,
+    systemStatus
   } = useSolarGuard();
 
-  const isWiping = cleaningState.status === 'wiping';
-  const isCooldown = cleaningState.status === 'cooldown';
-  const isStopped = cleaningState.status === 'stopped';
-  const isDamage = inspection.preset?.isDamage;
-
-
+  const isWiping = cleaningState?.status === 'wiping';
+  const isCooldown = cleaningState?.status === 'cooldown';
+  const isStopped = cleaningState?.status === 'stopped';
+  const isDamage = Boolean(inspection?.preset?.isDamage);
+  const isEsp32Connected = Boolean(systemStatus?.esp32?.connected);
 
   return (
     <div className="space-y-5">
@@ -48,10 +48,10 @@ export default function CleaningControlPage() {
 
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-mono font-medium">
-            <span className={`w-2 h-2 rounded-full ${systemStatus.esp32.connected ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`}></span>
-            <span>ESP32 (GPIO 18): {systemStatus.esp32.connected ? 'EMQX Synced' : 'Ready'}</span>
+            <span className={`w-2 h-2 rounded-full ${isEsp32Connected ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`}></span>
+            <span>ESP32 (GPIO 18): {isEsp32Connected ? 'EMQX Synced' : 'Ready'}</span>
           </div>
-          <StatusBadge status={cleaningState.status} text={cleaningState.status.toUpperCase()} size="md" />
+          <StatusBadge status={cleaningState?.status || 'idle'} text={(cleaningState?.status || 'IDLE').toUpperCase()} size="md" />
         </div>
       </div>
 

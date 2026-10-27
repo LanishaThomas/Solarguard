@@ -12,7 +12,7 @@ export const DEFAULT_SETTINGS = {
   tempAlertThresholdC: 55,        // DS18B20 Alert limit in °C
   peerDropThreshold: 0.70,        // Flag when power is below 70% of peer-panel median (30% drop)
   consecutiveAlertSamples: 5,     // Require 5 consecutive readings before triggering alert
-  minSunlightThresholdW: 0.20,    // Min power to consider sunlight valid (avoids night/dusk flags)
+  minSunlightThresholdW: 0.002,   // 2 mW threshold sensitive to mobile phone flashlight / small panels
 
   // Wiper parameters
   wiperDurationMs: 1800,

@@ -146,15 +146,30 @@ export function SolarGuardProvider({ children }) {
 
   // Helper to append alerts avoiding duplicates
   const addAlert = (newAlert) => {
-    setAlerts((prev) => [
-      {
-        id: `ALT-${Date.now().toString().slice(-4)}`,
-        timestamp: new Date().toISOString(),
-        acknowledged: false,
-        ...newAlert
-      },
-      ...prev
-    ]);
+    setAlerts((prev) => {
+      // Prevent duplicate unacknowledged alerts of the same type and panel
+      const existingIdx = prev.findIndex(
+        (a) => !a.acknowledged && a.type === newAlert.type && (a.panelId ?? null) === (newAlert.panelId ?? null)
+      );
+      if (existingIdx !== -1) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          ...newAlert,
+          timestamp: new Date().toISOString()
+        };
+        return updated;
+      }
+      return [
+        {
+          id: `ALT-${Date.now().toString().slice(-4)}`,
+          timestamp: new Date().toISOString(),
+          acknowledged: false,
+          ...newAlert
+        },
+        ...prev
+      ];
+    });
   };
 
   // Cooldown countdown timer
@@ -273,7 +288,7 @@ export function SolarGuardProvider({ children }) {
           }));
         }
 
-        // 2. DS18B20 Telemetry
+        // 2. INA219 Electricity & DS18B20 Telemetry
         if (topic === `${prefix}/telemetry`) {
           setLastUpdated(new Date());
           setSystemStatus((prev) => ({
@@ -287,41 +302,56 @@ export function SolarGuardProvider({ children }) {
             }
           }));
 
+          // Update Panels array from ESP32 INA219 readings
+          if (payload.panels && Array.isArray(payload.panels)) {
+            setPanels(payload.panels);
+          }
+
+          // Update Temperature from DS18B20
           const tempNum = typeof payload.temperature === 'number'
             ? payload.temperature
-            : parseFloat(payload.temperature);
+            : (typeof payload.temperature_c === 'number' ? payload.temperature_c : parseFloat(payload.temperature || payload.temperature_c));
 
+          const tempVal = !isNaN(tempNum) ? parseFloat(tempNum.toFixed(1)) : 0;
           if (!isNaN(tempNum)) {
-            const tempVal = parseFloat(tempNum.toFixed(1));
             setTemperature(tempVal);
+          }
 
-            // Record genuine telemetry point
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            setTelemetryHistory((prev) => {
-              const newPoint = {
-                timestamp: now.toISOString(),
-                timeFormatted: timeStr,
-                panel1_power: 0,
-                panel2_power: 0,
-                panel3_power: 0,
-                total_power: 0,
-                temperature: tempVal,
-              };
-              return [...prev.slice(-29), newPoint];
+          // Record genuine telemetry point with real INA219 powers
+          const now = new Date();
+          const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const p1Power = payload.panels?.[0]?.power_w ?? payload.panel1_power ?? 0;
+          const p2Power = payload.panels?.[1]?.power_w ?? payload.panel2_power ?? 0;
+          const p3Power = payload.panels?.[2]?.power_w ?? payload.panel3_power ?? 0;
+          const totPower = payload.total_power ?? (p1Power + p2Power + p3Power);
+
+          setTelemetryHistory((prev) => {
+            const newPoint = {
+              timestamp: now.toISOString(),
+              timeFormatted: timeStr,
+              panel1_power: parseFloat(Number(p1Power).toFixed(2)),
+              panel2_power: parseFloat(Number(p2Power).toFixed(2)),
+              panel3_power: parseFloat(Number(p3Power).toFixed(2)),
+              total_power: parseFloat(Number(totPower).toFixed(2)),
+              temperature: tempVal,
+            };
+            return [...prev.slice(-29), newPoint];
+          });
+
+          // Telemetry state updated cleanly without spamming alerts
+        }
+
+        // 3. System Alerts from ESP32
+        if (topic === `${prefix}/alerts` || topic === `${prefix}/temperature/alert`) {
+          if (payload.title && payload.message) {
+            addAlert({
+              type: payload.type || payload.alert || 'SYSTEM_ALERT',
+              severity: payload.severity || 'warning',
+              panelId: payload.panel_id || null,
+              title: payload.title,
+              message: payload.message,
+              recommendedAction: payload.recommendedAction || 'Check SolarGuard monitoring dashboard.'
             });
-
-            // Temperature threshold check
-            if (tempVal >= settings.tempAlertThresholdC) {
-              addAlert({
-                type: 'HIGH_TEMPERATURE',
-                severity: 'warning',
-                panelId: null,
-                title: `High Surface Temperature: ${tempVal}°C`,
-                message: `DS18B20 sensor on GPIO 4 reported ${tempVal}°C, which exceeds the configured warning threshold (${settings.tempAlertThresholdC}°C).`,
-                recommendedAction: 'Inspect thermal conditions to prevent cell stress.'
-              });
-            }
           }
         }
 
