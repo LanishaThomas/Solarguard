@@ -41,4 +41,20 @@ export const DEFAULT_SETTINGS = {
   mongoUri: '',
   mongoDbName: 'solarguard_db',
   mongoSyncEnabled: false,
+
+  // Alert Email Notifications (Stored in MongoDB; pushed strictly for Cracks, Power Problems, & Temp > 55°C)
+  notificationEmail: '',
+  notificationEmailEnabled: true,
+  emailProvider: 'resend', // 'resend' | 'brevo' | 'smtp'
+  resendApiKey: '',
+  resendConfigured: false,
+  resendApiKeyMasked: '',
+  brevoApiKey: '',
+  brevoConfigured: false,
+  brevoApiKeyMasked: '',
+  smtpHost: 'smtp.gmail.com',
+  smtpPort: 587,
+  smtpUser: '',
+  smtpPass: '',
+  smtpConfigured: false,
 };

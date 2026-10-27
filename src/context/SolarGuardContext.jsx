@@ -143,6 +143,103 @@ export function SolarGuardProvider({ children }) {
   // Timer Ref for Wipe Animation & Cooldown
   const wipeIntervalRef = useRef(null);
   const cooldownIntervalRef = useRef(null);
+  const lastTempAlertEmailTimeRef = useRef(0);
+
+  // Dispatches critical email alert strictly for the 3 specified problems:
+  // 1. CRACK_DETECTED
+  // 2. POWER_UNDERPERFORMANCE
+  // 3. HIGH_TEMPERATURE
+  const dispatchCriticalEmailAlert = async ({ problem_type, title, details, panel_id, metrics }) => {
+    const allowed = ['CRACK_DETECTED', 'POWER_UNDERPERFORMANCE', 'HIGH_TEMPERATURE'];
+    if (!allowed.includes(problem_type)) {
+      console.warn(`[SolarGuard Email] Alert type '${problem_type}' blocked. Emails are restricted strictly to Cracks, Power Problems, and Temp > 55°C.`);
+      return { success: false, reason: 'DISALLOWED_PROBLEM_TYPE' };
+    }
+
+    try {
+      const response = await fetch(`${backendUrl}/api/notifications/send-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problem_type,
+          title,
+          details,
+          panel_id: panel_id || null,
+          metrics: metrics || {}
+        })
+      });
+      const data = await response.json();
+      console.log(`[SolarGuard Email Alert Dispatched (${problem_type})]:`, data);
+      return data;
+    } catch (err) {
+      console.warn('[SolarGuard Email Alert Dispatch Error]:', err.message);
+      return { success: false, error: err.message };
+    }
+  };
+
+  // Saves notification email and credentials directly to MongoDB
+  const saveNotificationSettingsToDb = async (emailSettings) => {
+    try {
+      const response = await fetch(`${backendUrl}/api/notifications/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailSettings)
+      });
+      const data = await response.json();
+      if (data.notification_email) {
+        setSettings((prev) => ({
+          ...prev,
+          notificationEmail: data.notification_email,
+          notificationEmailEnabled: true,
+          ...emailSettings
+        }));
+      }
+      return data;
+    } catch (err) {
+      console.error('[SolarGuard] Error saving notification settings to MongoDB:', err);
+      setSettings((prev) => ({ ...prev, ...emailSettings }));
+      return { success: false, error: err.message };
+    }
+  };
+
+  // Dispatches a live test email to verify user inbox delivery
+  const sendTestNotificationEmail = async (overrideEmail) => {
+    try {
+      const response = await fetch(`${backendUrl}/api/notifications/test-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient_email: overrideEmail || settings.notificationEmail || null })
+      });
+      return await response.json();
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  // Sync notification settings from MongoDB on mount
+  useEffect(() => {
+    const fetchMongoNotificationSettings = async () => {
+      try {
+        const res = await fetch(`${backendUrl}/api/notifications/settings`);
+        if (res.ok) {
+          const data = await res.json();
+          setSettingsState((prev) => ({
+            ...prev,
+            notificationEmail: data.notification_email || prev.notificationEmail,
+            resendConfigured: !!data.resend_api_key_configured,
+            resendApiKeyMasked: data.resend_api_key_masked || '',
+            brevoConfigured: !!data.brevo_api_key_configured,
+            brevoApiKeyMasked: data.brevo_api_key_masked || '',
+            smtpConfigured: !!data.smtp_pass_configured,
+            emailProvider: data.provider || prev.emailProvider || 'resend'
+          }));
+        }
+      } catch {
+        // Standalone or offline backend
+      }
+    };
+    fetchMongoNotificationSettings();
+  }, [backendUrl]);
 
   // Helper to append alerts avoiding duplicates
   const addAlert = (newAlert) => {
@@ -315,6 +412,23 @@ export function SolarGuardProvider({ children }) {
           const tempVal = !isNaN(tempNum) ? parseFloat(tempNum.toFixed(1)) : 0;
           if (!isNaN(tempNum)) {
             setTemperature(tempVal);
+            // Check if temperature exceeds safe limit of 55°C -> Push email alert!
+            if (tempVal > 55.0) {
+              const nowMs = Date.now();
+              if (nowMs - lastTempAlertEmailTimeRef.current >= 300000) { // 5-minute anti-spam
+                lastTempAlertEmailTimeRef.current = nowMs;
+                dispatchCriticalEmailAlert({
+                  problem_type: 'HIGH_TEMPERATURE',
+                  title: '🌡️ Thermal Limit Exceeded: Panel Temp > 55°C',
+                  details: `Live DS18B20 temperature reached ${tempVal}°C, exceeding the 55°C safe operating limit.`,
+                  metrics: {
+                    measured_temperature: `${tempVal}°C`,
+                    safe_limit: '55.0°C',
+                    status: 'OVERHEATING'
+                  }
+                });
+              }
+            }
           }
 
           // Record genuine telemetry point with real INA219 powers
@@ -353,9 +467,18 @@ export function SolarGuardProvider({ children }) {
               )
             );
           } else if (payload.title && payload.message) {
-            // When a new PEER_UNDERPERFORMANCE alert arrives, replace previous active ones
-            // so stale alerts from prior flashlight positions are instantly cleared
+            // Check for Problem 2: Power Underperformance -> Push email alert!
             if (payload.type === 'PEER_UNDERPERFORMANCE') {
+              dispatchCriticalEmailAlert({
+                problem_type: 'POWER_UNDERPERFORMANCE',
+                title: payload.title,
+                details: payload.message,
+                panel_id: payload.panel_id || null,
+                metrics: {
+                  problem: 'Electrical Generation Underperforming Peers',
+                  affected_panel: payload.panel_id ? `Panel ${payload.panel_id}` : 'Multiple Panels'
+                }
+              });
               setAlerts((prev) => {
                 const filtered = prev.filter((a) => a.type !== 'PEER_UNDERPERFORMANCE' || a.acknowledged);
                 return [
@@ -372,6 +495,25 @@ export function SolarGuardProvider({ children }) {
                   },
                   ...filtered
                 ];
+              });
+            } else if (payload.type === 'HIGH_TEMPERATURE' || payload.type === 'CRITICAL_TEMPERATURE') {
+              // Check for Problem 3: Temperature > 55°C -> Push email alert!
+              dispatchCriticalEmailAlert({
+                problem_type: 'HIGH_TEMPERATURE',
+                title: payload.title,
+                details: payload.message,
+                metrics: {
+                  measured_temperature: `${temperature || 55}°C`,
+                  safe_threshold: '55.0°C'
+                }
+              });
+              addAlert({
+                type: payload.type,
+                severity: payload.severity || 'warning',
+                panelId: payload.panel_id || null,
+                title: payload.title,
+                message: payload.message,
+                recommendedAction: payload.recommendedAction || 'Inspect solar array cooling.'
               });
             } else {
               addAlert({
@@ -794,8 +936,18 @@ export function SolarGuardProvider({ children }) {
         history: [livePreset, ...prev.history.slice(0, 19)],
       }));
 
-      // Damage safety lockout
-      if (data.is_damage_detected) {
+      // Damage safety lockout & Crack Email Alert
+      if (data.is_damage_detected || data.primary_class === 'crack') {
+        dispatchCriticalEmailAlert({
+          problem_type: 'CRACK_DETECTED',
+          title: '🚨 Critical Defect: Panel Surface Crack Detected',
+          details: data.safety_message || 'Optical inspection identified micro-crack or structural cell fracture. Automatic wiper lockout engaged.',
+          metrics: {
+            defect_type: 'Structural Crack / Fracture',
+            confidence: data.confidence ? `${Math.round(data.confidence * 100)}%` : 'Detected',
+            wiper_lockout: 'ENGAGED'
+          }
+        });
         addAlert({
           type: 'DAMAGE_LOCKOUT',
           severity: 'critical',
@@ -868,6 +1020,9 @@ export function SolarGuardProvider({ children }) {
         mqttTraffic,
         mqttStats,
         clearMqttTraffic,
+        dispatchCriticalEmailAlert,
+        saveNotificationSettingsToDb,
+        sendTestNotificationEmail,
       }}
     >
       {children}

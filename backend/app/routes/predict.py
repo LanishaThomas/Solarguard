@@ -86,6 +86,31 @@ async def predict_surface(
         except Exception as db_err:
             logger.warning(f"MongoDB inspection log error: {db_err}")
 
+        # Trigger automated email notification if structural crack is detected
+        primary_cls = (result.get("primary_class") or "").lower()
+        det_classes = [c.lower() for c in result.get("detected_classes", [])]
+        if primary_cls == "crack" or "crack" in det_classes:
+            try:
+                import asyncio
+                from ..services.email_service import email_service
+                crack_conf = result.get("confidence", 0.0)
+                if isinstance(result.get("class_probabilities"), dict):
+                    crack_conf = result["class_probabilities"].get("crack", crack_conf)
+
+                asyncio.create_task(email_service.dispatch_alert(
+                    problem_type="CRACK_DETECTED",
+                    title="🚨 Critical Defect: Panel Surface Crack Detected",
+                    details=f"Camera inspection identified a structural crack ({round(crack_conf * 100, 1)}% confidence). Automatic wiper safety lockout engaged to prevent physical panel scratching.",
+                    metrics={
+                        "defect_type": "Structural Glass/Cell Fracture",
+                        "detection_confidence": f"{round(crack_conf * 100, 1)}%",
+                        "wiper_lockout": "ACTIVE (Sweep Suspended)",
+                        "model_architecture": result.get("model_architecture", "MobileNetV3-Small")
+                    }
+                ))
+            except Exception as email_err:
+                logger.warning(f"Error triggering crack email alert: {email_err}")
+
         return JSONResponse(content=result)
 
 

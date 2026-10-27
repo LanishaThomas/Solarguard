@@ -9,6 +9,7 @@ from .model.classifier import MobileNetV3Classifier
 from .routes.predict import router as predict_router, set_classifier
 from .routes.model_info import router as info_router, set_classifier_for_info
 from .routes.health import router as health_router
+from .routes.notifications import router as notifications_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,6 +78,7 @@ else:
 app.include_router(health_router)
 app.include_router(predict_router)
 app.include_router(info_router)
+app.include_router(notifications_router)
 
 @app.get("/", tags=["Root"])
 @app.head("/", tags=["Root"])

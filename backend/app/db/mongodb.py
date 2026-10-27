@@ -115,6 +115,92 @@ class MongoDBClient:
             logger.error(f"Error logging cleaning to MongoDB: {e}")
             return False
 
+    def get_notification_settings(self) -> Dict[str, Any]:
+        """Retrieves stored alert notification settings (recipient email & configuration) from MongoDB."""
+        if not self.is_connected:
+            self.connect()
+        if not self.is_connected or self.db is None:
+            return {
+                "notification_email": "",
+                "provider": "smtp",
+                "is_enabled": False,
+                "stored_in_db": False
+            }
+        try:
+            doc = self.db.system_settings.find_one({"key": "notification_settings"})
+            if doc:
+                doc.pop("_id", None)
+                doc["stored_in_db"] = True
+                return doc
+            return {
+                "notification_email": "",
+                "provider": "smtp",
+                "is_enabled": False,
+                "stored_in_db": True
+            }
+        except Exception as e:
+            logger.error(f"Error fetching notification settings from MongoDB: {e}")
+            return {
+                "notification_email": "",
+                "provider": "smtp",
+                "is_enabled": False,
+                "error": str(e),
+                "stored_in_db": False
+            }
+
+    def save_notification_settings(self, settings_data: Dict[str, Any]) -> bool:
+        """Saves or updates alert notification settings in MongoDB."""
+        if not self.is_connected:
+            self.connect()
+        if not self.is_connected or self.db is None:
+            return False
+        try:
+            doc = dict(settings_data)
+            doc["key"] = "notification_settings"
+            doc["updated_at"] = datetime.now(timezone.utc)
+            self.db.system_settings.update_one(
+                {"key": "notification_settings"},
+                {"$set": doc},
+                upsert=True
+            )
+            logger.info(f"Notification settings saved to MongoDB for recipient: {doc.get('notification_email')}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving notification settings to MongoDB: {e}")
+            return False
+
+    def log_email_alert(self, alert_data: Dict[str, Any]) -> bool:
+        """Logs dispatched email alerts to MongoDB for full audit history."""
+        if not self.is_connected:
+            self.connect()
+        if not self.is_connected or self.db is None:
+            return False
+        try:
+            doc = dict(alert_data)
+            doc["created_at"] = datetime.now(timezone.utc)
+            self.db.email_alerts.insert_one(doc)
+            return True
+        except Exception as e:
+            logger.error(f"Error logging email alert to MongoDB: {e}")
+            return False
+
+    def get_recent_email_alerts(self, limit: int = 15) -> List[Dict[str, Any]]:
+        """Fetches recent email alerts from MongoDB."""
+        if not self.is_connected or self.db is None:
+            return []
+        try:
+            cursor = self.db.email_alerts.find().sort("created_at", -1).limit(limit)
+            alerts = []
+            for doc in cursor:
+                doc.pop("_id", None)
+                if isinstance(doc.get("created_at"), datetime):
+                    doc["created_at"] = doc["created_at"].isoformat()
+                alerts.append(doc)
+            return alerts
+        except Exception as e:
+            logger.error(f"Error reading email alerts from MongoDB: {e}")
+            return []
+
     def get_status(self) -> Dict[str, Any]:
         return {
             "is_connected": self.is_connected,

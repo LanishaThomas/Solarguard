@@ -8,7 +8,9 @@ import {
   Save,
   Database,
   ExternalLink,
-  ShieldAlert
+  ShieldAlert,
+  Mail,
+  Send
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -20,12 +22,17 @@ export default function SettingsPage() {
     mqttStatus,
     mqttLastError,
     sendMqttTestPulse,
-    systemStatus
+    systemStatus,
+    saveNotificationSettingsToDb,
+    sendTestNotificationEmail
   } = useSolarGuard();
 
   const [localSettings, setLocalSettings] = useState(settings);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [testFeedback, setTestFeedback] = useState(null);
+  const [emailStatus, setEmailStatus] = useState(null);
+  const [mongoSaved, setMongoSaved] = useState(false);
+  const [showAdvancedEmail, setShowAdvancedEmail] = useState(false);
 
   const handleTestPulse = () => {
     const res = sendMqttTestPulse();
@@ -33,10 +40,73 @@ export default function SettingsPage() {
     setTimeout(() => setTestFeedback(null), 6000);
   };
 
-  const handleSave = (e) => {
+  const handleTestEmail = async () => {
+    if (!localSettings.notificationEmail || !localSettings.notificationEmail.includes('@')) {
+      setEmailStatus({
+        loading: false,
+        success: false,
+        message: 'Please enter a valid email address first.'
+      });
+      return;
+    }
+
+    setEmailStatus({ loading: true, message: 'Dispatching test notification email...' });
+    if (saveNotificationSettingsToDb) {
+      await saveNotificationSettingsToDb({
+        notification_email: localSettings.notificationEmail,
+        resend_api_key: localSettings.resendApiKey || null,
+        brevo_api_key: localSettings.brevoApiKey || null,
+        smtp_host: localSettings.smtpHost || null,
+        smtp_port: Number(localSettings.smtpPort) || 587,
+        smtp_user: localSettings.smtpUser || null,
+        smtp_pass: localSettings.smtpPass || null,
+      });
+    }
+
+    if (sendTestNotificationEmail) {
+      const res = await sendTestNotificationEmail(localSettings.notificationEmail);
+      if (res && res.success) {
+        setEmailStatus({
+          loading: false,
+          success: true,
+          message: res.message || `Test email dispatched to ${localSettings.notificationEmail}! Check your inbox.`
+        });
+      } else {
+        setEmailStatus({
+          loading: false,
+          success: false,
+          message: res?.message || res?.error || 'Failed to dispatch email.'
+        });
+      }
+    }
+    setTimeout(() => setEmailStatus(null), 8000);
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
     setSettings(localSettings);
     setSavedSuccess(true);
+
+    // Persist email settings to MongoDB
+    if (localSettings.notificationEmail && saveNotificationSettingsToDb) {
+      try {
+        const res = await saveNotificationSettingsToDb({
+          notification_email: localSettings.notificationEmail,
+          resend_api_key: localSettings.resendApiKey || null,
+          brevo_api_key: localSettings.brevoApiKey || null,
+          smtp_host: localSettings.smtpHost || null,
+          smtp_port: Number(localSettings.smtpPort) || 587,
+          smtp_user: localSettings.smtpUser || null,
+          smtp_pass: localSettings.smtpPass || null,
+        });
+        if (res && res.stored_in_db) {
+          setMongoSaved(true);
+          setTimeout(() => setMongoSaved(false), 3500);
+        }
+      } catch (err) {
+        console.error('Failed to sync settings to MongoDB:', err);
+      }
+    }
     setTimeout(() => setSavedSuccess(false), 2500);
   };
 
@@ -164,7 +234,243 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Section 2: SG90 Wiper Parameters */}
+        {/* Section 2: Critical Alert Email Notifications (MongoDB-Backed) */}
+        <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Mail className="w-5 h-5 text-rose-600" />
+              <div>
+                <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                  Critical Alert Email Notifications
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    MongoDB Synced
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Automated email alerts are stored in MongoDB and pushed <strong>strictly and exclusively</strong> for 3 critical conditions
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-semibold">
+                <Database className="w-3.5 h-3.5 text-blue-600" /> db.system_settings
+              </span>
+            </div>
+          </div>
+
+          {/* Exclusive 3 Trigger Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 flex flex-col justify-between">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl">🚨</span>
+                <div>
+                  <h4 className="font-heading font-bold text-xs text-rose-950 uppercase tracking-wide">
+                    1. Cracks Found
+                  </h4>
+                  <p className="text-[11px] text-rose-800/90 mt-1 leading-snug">
+                    Triggered when AI vision identifies structural panel micro-cracks or shattered photovoltaic cells.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded mt-2.5 inline-block self-start">
+                Wiper Lockout Engaged
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 flex flex-col justify-between">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl">⚡</span>
+                <div>
+                  <h4 className="font-heading font-bold text-xs text-amber-950 uppercase tracking-wide">
+                    2. Power Problems
+                  </h4>
+                  <p className="text-[11px] text-amber-800/90 mt-1 leading-snug">
+                    Triggered when INA219 sensors detect generation dropping significantly below peer baseline (&gt;35% drop).
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded mt-2.5 inline-block self-start">
+                Peer Anomaly Detection
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-orange-50/70 border border-orange-200 flex flex-col justify-between">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl">🌡️</span>
+                <div>
+                  <h4 className="font-heading font-bold text-xs text-orange-950 uppercase tracking-wide">
+                    3. Temp &gt; 55°C Limit
+                  </h4>
+                  <p className="text-[11px] text-orange-800/90 mt-1 leading-snug">
+                    Triggered when DS18B20 digital probe measures surface heat exceeding safe operating threshold (55°C).
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded mt-2.5 inline-block self-start">
+                Thermal Surge Hazard
+              </span>
+            </div>
+          </div>
+
+          {/* Email Input Field & Test Dispatcher */}
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
+              <div className="flex-1 w-full">
+                <label className="block text-xs font-semibold text-slate-800 mb-1 flex items-center justify-between">
+                  <span>Alert Recipient Email Address</span>
+                  <span className="text-[11px] text-slate-500 font-normal">Stored in MongoDB database</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. yourname@gmail.com"
+                    value={localSettings.notificationEmail || ''}
+                    onChange={(e) =>
+                      setLocalSettings({
+                        ...localSettings,
+                        notificationEmail: e.target.value,
+                      })
+                    }
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 shadow-sm"
+                  />
+                  {localSettings.notificationEmail && localSettings.notificationEmail.includes('@') && (
+                    <span className="absolute right-3 top-2.5 text-emerald-600 text-xs flex items-center gap-1 font-semibold">
+                      <CheckCircle2 className="w-4 h-4" /> Valid
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleTestEmail}
+                disabled={emailStatus?.loading}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-heading font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow-sm shrink-0"
+              >
+                <Send className="w-3.5 h-3.5" /> {emailStatus?.loading ? 'Sending Test...' : '🧪 Send Test Alert Email'}
+              </button>
+            </div>
+
+            {emailStatus && (
+              <div className={`p-3 rounded-lg text-xs font-mono border animate-fade-in ${
+                emailStatus.success 
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900' 
+                  : 'bg-rose-50 border-rose-300 text-rose-900'
+              }`}>
+                <div className="flex items-center gap-1.5 font-bold">
+                  {emailStatus.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <ShieldAlert className="w-4 h-4 text-rose-600" />}
+                  {emailStatus.message}
+                </div>
+              </div>
+            )}
+
+            {mongoSaved && (
+              <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Notification email updated and stored in MongoDB cluster (<code>solarguard_db.system_settings</code>).
+              </div>
+            )}
+          </div>
+
+          {/* Collapsible Free Email Provider Options */}
+          <div className="border border-slate-200 rounded-xl p-4 bg-white">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedEmail(!showAdvancedEmail)}
+              className="flex items-center justify-between w-full text-left font-heading font-semibold text-xs text-slate-800 hover:text-blue-600 transition"
+            >
+              <span className="flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-blue-600" /> Free Email Provider Setup (Resend, Brevo, or Gmail SMTP)
+              </span>
+              <span className="text-slate-400 text-xs font-mono">{showAdvancedEmail ? '▲ Hide' : '▼ Expand Options'}</span>
+            </button>
+
+            {showAdvancedEmail && (
+              <div className="mt-4 pt-3 border-t border-slate-100 space-y-4 text-xs">
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  SolarGuard uses free email delivery APIs. You can either enter a free <strong>Resend API Key</strong> (100 free emails/day at <a href="https://resend.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">resend.com</a> with no credit card required) or free <strong>Gmail App Password</strong>. If left blank, alerts are safely logged and stored directly in MongoDB.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+                      <span>Resend Free API Key (<code className="text-slate-500">re_...</code>)</span>
+                      {settings.resendConfigured && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active ({settings.resendApiKeyMasked})
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="password"
+                      placeholder={settings.resendConfigured ? `Connected (${settings.resendApiKeyMasked})` : "re_123456789..."}
+                      value={localSettings.resendApiKey || ''}
+                      onChange={(e) => setLocalSettings({ ...localSettings, resendApiKey: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:bg-white focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Recommended &bull; 100 emails/day free &bull; 🔒 Stored safely in <code>.env</code> & MongoDB
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">
+                      Brevo Free API Key (<code className="text-slate-500">xkeysib-...</code>)
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="xkeysib-..."
+                      value={localSettings.brevoApiKey || ''}
+                      onChange={(e) => setLocalSettings({ ...localSettings, brevoApiKey: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono focus:bg-white focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">300 emails/day free</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="font-semibold text-slate-800 block mb-2">Or Use Free Gmail SMTP Relay:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-600 mb-1">SMTP Host &amp; Port</label>
+                      <input
+                        type="text"
+                        placeholder="smtp.gmail.com:587"
+                        value={`${localSettings.smtpHost || 'smtp.gmail.com'}:${localSettings.smtpPort || 587}`}
+                        disabled
+                        className="w-full bg-slate-200/80 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-600 mb-1">Gmail Address (User)</label>
+                      <input
+                        type="email"
+                        placeholder="yourname@gmail.com"
+                        value={localSettings.smtpUser || ''}
+                        onChange={(e) => setLocalSettings({ ...localSettings, smtpUser: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-600 mb-1">Google App Password (16 chars)</label>
+                      <input
+                        type="password"
+                        placeholder="xxxx xxxx xxxx xxxx"
+                        value={localSettings.smtpPass || ''}
+                        onChange={(e) => setLocalSettings({ ...localSettings, smtpPass: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Section 3: SG90 Wiper Parameters */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
             <RotateCw className="w-5 h-5 text-amber-500" />
