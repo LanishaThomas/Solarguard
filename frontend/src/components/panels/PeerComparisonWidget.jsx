@@ -7,7 +7,7 @@ export default function PeerComparisonWidget({ panels, settings }) {
   const powers = panels.map((p) => p.power_w);
   const medianPower = calculateMedian(powers);
   const dropRatio = settings.peerDropThreshold || 0.70;
-  const minSunlight = settings.minSunlightThresholdW || 0.20;
+  const minSunlight = settings.minSunlightW ?? settings.minSunlightThresholdW ?? 0.002;
 
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm">
