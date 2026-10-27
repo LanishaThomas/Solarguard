@@ -25,8 +25,10 @@ export function evaluatePanelHealth(panel, allPanels, settings = {}) {
   const minSunlightW = settings.minSunlightW != null ? settings.minSunlightW : 0.002;
   const dropRatio = settings.peerDropThreshold || 0.7; // Below 70% of median (i.e. >30% drop)
 
-  const powers = allPanels.map((p) => p.power_w);
+  const powers = allPanels.map((p) => p.power_w || 0);
+  const voltages = allPanels.map((p) => p.voltage_v || 0);
   const medianPower = calculateMedian(powers);
+  const maxVoltage = Math.max(...voltages, 0);
 
   if (panel.status === 'offline') {
     return {
@@ -38,15 +40,41 @@ export function evaluatePanelHealth(panel, allPanels, settings = {}) {
     };
   }
 
-  // If dusk or heavy clouds
-  if (medianPower < minSunlightW) {
+  // If ESP32 firmware already identified underperformance
+  if (panel.flag === 'UNDERPERFORMING' || panel.status === 'warning') {
+    const dev = panel.deviation_pct != null ? panel.deviation_pct : -50;
+    return {
+      status: 'warning',
+      severity: 'warning',
+      message: `Output is ${Math.abs(Math.round(dev))}% below peer baseline`,
+      deviationPercent: Math.round(dev),
+      medianPower,
+    };
+  }
+
+  // If dusk or dark (no significant power and no significant voltage)
+  if (medianPower < minSunlightW && maxVoltage < 0.40) {
     return {
       status: 'low_ambient_light',
       severity: 'info',
-      message: 'Ambient sunlight below comparison baseline (< 0.2W)',
+      message: 'Ambient sunlight in standby (< 2 mW)',
       deviationPercent: 0,
       medianPower,
     };
+  }
+
+  // If illuminated under open-circuit (current = 0, but voltage present from flashlight)
+  if (medianPower < minSunlightW && maxVoltage >= 0.40) {
+    if (panel.voltage_v < maxVoltage * 0.5) {
+      const dropPct = Math.round(((maxVoltage - panel.voltage_v) / maxVoltage) * 100);
+      return {
+        status: 'warning',
+        severity: 'warning',
+        message: `Voltage is ${dropPct}% below illuminated panel (${maxVoltage.toFixed(2)}V)`,
+        deviationPercent: -dropPct,
+        medianPower,
+      };
+    }
   }
 
   const deviation = medianPower > 0 

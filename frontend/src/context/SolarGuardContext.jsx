@@ -329,10 +329,10 @@ export function SolarGuardProvider({ children }) {
             const newPoint = {
               timestamp: now.toISOString(),
               timeFormatted: timeStr,
-              panel1_power: parseFloat(Number(p1Power).toFixed(2)),
-              panel2_power: parseFloat(Number(p2Power).toFixed(2)),
-              panel3_power: parseFloat(Number(p3Power).toFixed(2)),
-              total_power: parseFloat(Number(totPower).toFixed(2)),
+              panel1_power: parseFloat(Number(p1Power).toFixed(4)),
+              panel2_power: parseFloat(Number(p2Power).toFixed(4)),
+              panel3_power: parseFloat(Number(p3Power).toFixed(4)),
+              total_power: parseFloat(Number(totPower).toFixed(4)),
               temperature: tempVal,
             };
             return [...prev.slice(-29), newPoint];

@@ -13,12 +13,19 @@ export function formatCurrent(a) {
   if (mA >= 1000) {
     return `${(mA / 1000).toFixed(3)} A`;
   }
+  if (mA > 0 && mA < 10) {
+    return `${mA.toFixed(2)} mA`;
+  }
   return `${Math.round(mA)} mA`;
 }
 
 export function formatPower(w) {
   if (w == null || isNaN(w)) return '-- W';
-  return `${Number(w).toFixed(3)} W`;
+  const num = Number(w);
+  if (num > 0 && num < 0.01) {
+    return `${(num * 1000).toFixed(1)} mW`;
+  }
+  return `${num.toFixed(3)} W`;
 }
 
 export function formatTemperature(c) {

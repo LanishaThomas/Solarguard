@@ -20,17 +20,35 @@ This firmware strictly adheres to your exact breadboard pinout:
 
 ---
 
-## 2. INA219 I2C Address Configuration
+## 2. INA219 Hardware Modes & Addressing (Choose One)
 
-To measure all three solar panels independently on the shared I2C bus (GPIO 21/22), each INA219 module has a distinct hardware I2C address:
+Standard INA219 modules ship with the exact same factory I2C address (`0x40`). If all 3 modules are tied in parallel to GPIO 21 & 22 with address `0x40`, the ESP32 cannot distinguish which panel is generating power, causing all readings to report on Panel 1.
 
-| Panel | INA219 Channel | I2C Address | Address Jumper Configuration |
-|:---|:---|:---|:---|
-| **Panel 1 (Alpha)** | INA219 #1 | `0x40` | Default (no solder jumpers bridged) |
-| **Panel 2 (Beta)** | INA219 #2 | `0x41` | Solder bridge across **A0** pads |
-| **Panel 3 (Gamma)** | INA219 #3 | `0x44` | Solder bridge across **A1** pads *(or 0x45 auto-detected)* |
+The firmware supports **three modes**:
 
-*On boot, the firmware automatically scans the I2C bus, reports all detected addresses on Serial Monitor, and dynamically binds the INA219 channels.*
+### Mode 1: Solder Jumper (Permanent 3-Channel Hardware — Recommended)
+All modules remain on GPIO 21 (SDA) and GPIO 22 (SCL):
+- **Module 1 (Panel 1):** Leave pads unsoldered ➔ Address `0x40`
+- **Module 2 (Panel 2):** Solder bridge the **A0** pads ➔ Address `0x41`
+- **Module 3 (Panel 3):** Solder bridge the **A1** pads ➔ Address `0x44`
+
+### Mode 2: Multi-Pin Jumper Wiring (No Soldering Iron Needed!)
+Keep all modules at address `0x40`. Give each module dedicated ESP32 GPIO pins:
+- **Module 1 (Panel 1):** SDA ➔ **GPIO 21**, SCL ➔ **GPIO 22**
+- **Module 2 (Panel 2):** SDA ➔ **GPIO 19**, SCL ➔ **GPIO 23**
+- **Module 3 (Panel 3):** SDA ➔ **GPIO 25**, SCL ➔ **GPIO 26**
+*(VCC 3.3V and GND still connect to the common breadboard power rails)*
+
+### Mode 3: Single-Sensor Bench-Test Mode (Automatic Fallback)
+If only 1 INA219 is detected at `0x40` on GPIO 21 & 22, the firmware automatically engages **Bench-Test Mode**:
+- Panel 1 reads your genuine physical INA219 sensor (responds in real time to your mobile flashlight).
+- Panels 2 & 3 run virtual baseline peers (`0.045V`, `0.000W`).
+- Suppresses the `SENSOR_FAULT` alert and immediately enables testing of:
+  - Peer underperformance alerting (>50% drop between illuminated and unilluminated panels)
+  - The 10-second alert cooldown timer
+  - Wiper cleaning recommendations on the dashboard
+
+*On boot, the firmware automatically scans all buses, detects the active mode, and prints a diagnostic report in the Serial Monitor.*
 
 ---
 
