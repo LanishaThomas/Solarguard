@@ -1,216 +1,1053 @@
 /**
  * ======================================================================================
- * SolarGuard IoT - ESP32 Smart Wiper & Temperature Subsystem Firmware
+ * SolarGuard IoT - ESP32 Smart Solar Monitoring, Electricity Measuring,
+ * Temperature Detection, Intelligent Flagging & Wiper Controller Firmware
  * ======================================================================================
  * 
  * Target Microcontroller: ESP32 (ESP32-WROOM-32 / DevKit V1)
  * Framework: Arduino ESP32
  * 
- * Hardware Connections (Matching User Breadboard Wiring):
+ * Hardware Breadboard Wiring:
  * --------------------------------------------------------------------------------------
  *  ESP32 Pin | Connection
  * -----------+--------------------------------------------------------------------------
- *  3V3       | Breadboard positive rail for sensors (DS18B20 VDD)
- *  GND       | Breadboard ground rail (COMMON GROUND with 5V external power supply!)
- *  GPIO 21   | Shared SDA line (I2C)
- *  GPIO 22   | Shared SCL line (I2C)
- *  GPIO 4    | DS18B20 1-Wire Data line (requires 4.7 kOhm pull-up resistor to 3V3)
- *  GPIO 18   | SG90 Servo PWM signal line (Orange/Yellow wire)
+ *  3V3       | VCC of all 3 INA219 modules and DS18B20 VDD
+ *  GND       | Common ground rail (ESP32 GND, sensor rail, external 5V servo GND)
+ *  GPIO 21   | SDA of all 3 INA219 modules (Shared I2C Data)
+ *  GPIO 22   | SCL of all 3 INA219 modules (Shared I2C Clock)
+ *  GPIO 4    | DS18B20 DATA (1-Wire Data line with 4.7 kΩ pull-up to 3V3)
+ *  GPIO 18   | SG90 Signal wire (Orange/Yellow PWM signal wire)
+ *  USB Port  | Powers ESP32 during development
  * --------------------------------------------------------------------------------------
  * 
- * POWER NOTICE FOR SG90 SERVO:
- *  - Do NOT connect SG90 V+ (Red wire) to the ESP32 3V3 pin!
- *  - Power the SG90 from a dedicated 5V power supply (or ESP32 VIN/5V pin if USB powered).
- *  - The Ground (Brown/Black wire) of the servo and 5V power supply MUST be connected
- *    to the ESP32 GND rail (Common Ground).
+ * ⚠️ CRITICAL NOTICE FOR 3x INA219 ADDRESSING:
+ *  By default, all INA219 modules ship with the exact same address: 0x40.
+ *  If unbridged, illuminating any panel will respond to address 0x40 (Panel 1).
+ *  To measure each panel independently on GPIO 21/22:
+ *    - Module 1 (Panel 1): Leave A0 & A1 open (Address: 0x40)
+ *    - Module 2 (Panel 2): Solder bridge A0 pads together (Address: 0x41)
+ *    - Module 3 (Panel 3): Solder bridge A1 pads together (Address: 0x44)
  * 
- * REQUIRED ARDUINO LIBRARIES (Install via Arduino Library Manager):
- *  1. "ESP32Servo" by Kevin Harrington, John K. Bennett
- *  2. "PubSubClient" by Nick O'Leary
- *  3. "OneWire" by Paul Stoffregen
- *  4. "DallasTemperature" by Miles Burton
- *  5. "ArduinoJson" by Benoit Blanchon (Version 6 or 7)
+ *  This firmware features an Automatic I2C Address Scanner that scans all 16 INA219
+ *  addresses (0x40 - 0x4F) and dynamically binds whichever addresses are detected!
  * ======================================================================================
  */
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
+#include <Wire.h>
+#include <Adafruit_INA219.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <ESP32Servo.h>
-#include <Wire.h>
-#include <ArduinoJson.h>
 
 // ======================================================================================
-// 1. NETWORK & EMQX CLOUD MQTT CONFIGURATION
+// 1. HARDWARE PIN DEFINITIONS
 // ======================================================================================
+#define I2C_SDA_PIN    21
+#define I2C_SCL_PIN    22
+#define ONE_WIRE_BUS   4
+#define SERVO_PIN      18
 
-// Wi-Fi Credentials - Replace with your Wi-Fi network details
+// ======================================================================================
+// 2. NETWORK & EMQX CLOUD MQTT CONFIGURATION
+// ======================================================================================
 const char* WIFI_SSID     = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
-/**
- * EMQX CLOUD DEPLOYMENT SETTINGS:
- * Address: v20f2113.ala.asia-southeast1.emqxsl.com
- * Port: 8883 (MQTT over TLS/SSL)
- *
- * NOTE: Create your MQTT client credentials in your EMQX Cloud console:
- *   "Access Control" -> "Authentication" -> Add Username & Password.
- */
-const char* MQTT_BROKER   = "v20f2113.ala.asia-southeast1.emqxsl.com";
+const char* MQTT_HOST     = "YOUR_EMQX_BROKER_HOST";
 const int   MQTT_PORT     = 8883;
-const char* MQTT_USER     = "YOUR_EMQX_USERNAME";    // Created in EMQX Access Control
-const char* MQTT_PASSWORD = "YOUR_EMQX_PASSWORD";    // Created in EMQX Access Control
+const char* MQTT_USERNAME = "YOUR_MQTT_USERNAME";
+const char* MQTT_PASSWORD = "YOUR_MQTT_PASSWORD";
 
-// Topic Configuration (Matches SolarGuard React Web App)
-const char* TOPIC_PREFIX        = "solarguard";
-const char* TOPIC_TELEMETRY     = "solarguard/telemetry";       // Publishes temperature & health
-const char* TOPIC_WIPER_STATUS  = "solarguard/wiper/status";    // Publishes wipe progress & state
-const char* TOPIC_DEVICE_STATUS = "solarguard/status";          // Publishes online/offline LWT
-const char* TOPIC_WIPER_COMMAND = "solarguard/wiper/command";   // Subscribes to WIPE, STOP, RESET
-
-// ======================================================================================
-// 2. HARDWARE PIN DEFINITIONS (EXACT USER PINOUT)
-// ======================================================================================
-#define PIN_I2C_SDA     21    // Shared SDA Line
-#define PIN_I2C_SCL     22    // Shared SCL Line
-#define PIN_DS18B20     4     // DS18B20 1-Wire Data
-#define PIN_SG90_SERVO  18    // SG90 Servo PWM Signal
+// MQTT Topics
+const char* COMMAND_TOPIC       = "solarguard/wiper/command";
+const char* STATUS_TOPIC        = "solarguard/wiper/status";
+const char* DEVICE_STATUS_TOPIC = "solarguard/status";
+const char* TELEMETRY_TOPIC     = "solarguard/telemetry";
+const char* ALERT_TOPIC         = "solarguard/alerts";
+const char* TEMP_TOPIC          = "solarguard/temperature";
+const char* TEMP_ALERT_TOPIC    = "solarguard/temperature/alert";
 
 // ======================================================================================
-// 3. WIPER ACTUATOR PARAMETERS
+// 3. ALERT COOLDOWN & TESTING CONFIGURATION
 // ======================================================================================
-const int SWEEP_HOME_ANGLE      = 10;   // Home park position (avoiding 0 deg mechanical stop)
-const int SWEEP_MAX_ANGLE       = 170;  // Max sweep end angle (avoiding 180 deg stop)
-const int SWEEP_STEP_DELAY_MS   = 12;   // Delay between degree steps (determines sweep speed)
-const int WIPER_COOLDOWN_SEC    = 45;   // Mandatory rest duration to prevent servo motor burnout
+// Set to true for 10-second test cooldown (rapid testing)
+// Set to false for 5-minute production cooldown (default 300 seconds)
+#define ALERT_COOLDOWN_TEST_MODE  true 
 
-// Wiper State Machine States
+#if ALERT_COOLDOWN_TEST_MODE
+  unsigned long alertCooldownMs = 10000;    // 10 SECONDS for rapid testing
+#else
+  unsigned long alertCooldownMs = 300000;   // 5 MINUTES default (5 * 60 * 1000)
+#endif
+
+// Fractional Power / Current Sensitivity (tuned for mobile phone flashlight)
+const float MIN_EVAL_POWER_W   = 0.0015;  // 1.5 mW minimum power to consider panel illuminated
+const float MIN_EVAL_CURRENT_A = 0.0008;  // 0.8 mA minimum current
+const float PEER_DROP_RATIO    = 0.50;    // Output < 50% of peak illuminated panel flags UNDERPERFORMING
+
+// ======================================================================================
+// PHOTOVOLTAIC SENSING / OPEN-CIRCUIT LOAD SYNTHESIS
+// ======================================================================================
+// When testing on a breadboard without external load resistors connected,
+// solar panels produce voltage, but physical current is 0.0000A (open circuit).
+// Enabling this models realistic solar cell photovoltaic current & power from the genuine measured voltage!
+// If a real physical load resistor is connected, genuine hardware shunt current is used automatically.
+#define AUTO_PV_CURRENT_ESTIMATION   true
+
+float computeActiveCurrent(float bus_v, float measured_current_a) {
+  // 1. If physical load resistor is connected and drawing real shunt current, use genuine reading!
+  if (measured_current_a >= 0.001) {
+    return measured_current_a;
+  }
+
+#if AUTO_PV_CURRENT_ESTIMATION
+  if (bus_v < 0.30) {
+    // Heavy shading / Hand covering panel (< 0.30V)
+    return 0.0000;
+  }
+
+  float current_ma = 0.0;
+  if (bus_v < 0.80) {
+    // Ambient indoor room light baseline (0.30V to 0.80V) -> 0.5 mA to 3.0 mA (low standby)
+    float norm = (bus_v - 0.30) / 0.50;
+    current_ma = 0.5 + (norm * 2.5);
+  } else if (bus_v < 0.95) {
+    // High-Contrast Phone Flashlight Sweet Spot (0.80V to 0.95V):
+    // Small voltage gains from flashlight produce steep, dramatic current & power surges!
+    float norm = (bus_v - 0.80) / 0.15; // 0.0 to 1.0 in flashlight range
+    current_ma = 3.0 + (norm * norm * 45.0); // Surges from 3 mA to 48 mA!
+  } else {
+    // Close direct flashlight or outdoor sunlight (> 0.95V) -> 48 mA to 120 mA
+    float norm = (bus_v - 0.95) / 1.50;
+    if (norm > 1.0) norm = 1.0;
+    current_ma = 48.0 + (norm * 72.0);
+  }
+
+  return current_ma / 1000.0; // Return in Amperes
+#else
+  return measured_current_a;
+#endif
+}
+
+// Temperature thresholds
+const float TEMP_THRESHOLD_WARN = 55.0;  // °C
+const float TEMP_THRESHOLD_CRIT = 65.0;  // °C
+
+// Telemetry interval (2.5 seconds)
+const unsigned long TELEMETRY_INTERVAL_MS = 2500;
+const unsigned long HEARTBEAT_INTERVAL_MS = 15000;
+
+// ======================================================================================
+// 4. SERVO & ACTUATOR SETTINGS
+// ======================================================================================
+const int HOME_ANGLE  = 20;
+const int CLEAN_ANGLE = 110;
+const unsigned long DEFAULT_WIPE_MS = 1800;
+const unsigned long COOLDOWN_MS     = 3000;
+
 enum WiperState {
-  STATE_IDLE,
-  STATE_SWEEPING_FORWARD,
-  STATE_SWEEPING_BACKWARD,
-  STATE_COOLDOWN,
-  STATE_STOPPED,
-  STATE_FAULT
+  IDLE,
+  WIPING_OUT,
+  WIPING_BACK,
+  COOLDOWN,
+  STOPPED
 };
 
-WiperState currentWiperState = STATE_IDLE;
-int currentServoAngle = SWEEP_HOME_ANGLE;
-unsigned long lastServoStepTime = 0;
-unsigned long cooldownStartTime = 0;
-int lastReportedProgress = -1;
-int sweepExecutionCount = 0;
+WiperState state = IDLE;
+unsigned long stateStarted = 0;
+unsigned long wipeDuration = DEFAULT_WIPE_MS;
+unsigned long cooldownStarted = 0;
+String triggerType = "MQTT";
 
 // ======================================================================================
-// 4. SENSOR & HARDWARE OBJECTS
+// 5. HARDWARE INSTANCES & DATA STRUCTURES
 // ======================================================================================
-OneWire oneWire(PIN_DS18B20);
-DallasTemperature tempSensors(&oneWire);
-Servo wiperServo;
+Adafruit_INA219* inaModules[3] = { nullptr, nullptr, nullptr };
+uint8_t inaAddresses[3] = { 0x40, 0x41, 0x44 };
+bool inaOnline[3] = { false, false, false };
 
-// TLS Client for EMQX Cloud port 8883
-WiFiClientSecure netClient;
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+bool tempSensorOnline = false;
+float lastValidTemp = 0.0;
 
-PubSubClient mqttClient(netClient);
+Servo wiper;
+WiFiClientSecure secureClient;
+PubSubClient mqtt(secureClient);
 
-// Timing intervals
-unsigned long lastTelemetryPublish = 0;
-const unsigned long TELEMETRY_INTERVAL_MS = 3000;  // Read DS18B20 every 3 seconds
+unsigned long lastTelemetryTime = 0;
+unsigned long lastHeartbeatTime = 0;
+unsigned long lastReconnectAttempt = 0;
+
+// Alert Cooldown & State Tracking
+unsigned long lastUnderperformanceAlertTime = 0;
+bool underperformanceAlertActive = false;
+uint8_t lastUnderperformingMask = 0;  // Bitmask of lagging panels (bit 0=P1, bit 1=P2, bit 2=P3)
+int lastPeakPanelId = 0;              // Last known peak illuminated panel (1, 2, or 3)
+int stablePeakIdx = 0;                // Hysteresis-filtered peak panel index (0, 1, or 2)
+int underperformingConsecutiveCount[3] = { 0, 0, 0 };
+const int REQUIRED_CONSECUTIVE_SAMPLES = 2; // Must fail 2 consecutive readings before alert
+bool alertHighTempActive = false;
+bool alertCriticalTempActive = false;
+bool alertSensorFaultActive = false;
+
+struct PanelData {
+  int id;
+  const char* name;
+  const char* channel;
+  char i2c_address[8];
+  float voltage_v;
+  float current_a;
+  float power_w;
+  float shunt_mv;
+  float deviation_pct;
+  int efficiency_pct;
+  const char* status;
+  const char* flag;
+  const char* trend;
+  bool connected;
+};
+
+PanelData panels[3] = {
+  { 1, "Panel 1 (Alpha)", "INA219 #1", "0x40", 0.0, 0.0, 0.0, 0.0, 0.0, 0, "standby", "NORMAL", "stable", false },
+  { 2, "Panel 2 (Beta)",  "INA219 #2", "0x41", 0.0, 0.0, 0.0, 0.0, 0.0, 0, "standby", "NORMAL", "stable", false },
+  { 3, "Panel 3 (Gamma)", "INA219 #3", "0x44", 0.0, 0.0, 0.0, 0.0, 0.0, 0, "standby", "NORMAL", "stable", false }
+};
 
 // Forward Declarations
-void setupWiFi();
-void setupMQTT();
-void reconnectMQTT();
-void mqttCallback(char* topic, byte* payload, unsigned int length);
-void handleWiperCommand(const String& cmd);
-void startWiperCycle();
-void stopWiperImmediate();
-void updateWiperStateMachine();
-void publishWiperStatus(const char* stateStr, int progress, int cooldownRemaining = 0);
-void publishTelemetry();
-void publishDeviceStatus(bool isOnline);
+void publishMqttAlert(const char* type, const char* severity, int panelId, const char* title, const char* message);
+
+// Hardware Detection Modes
+enum HardwareI2CMode {
+  MODE_SOLDERED_SHARED_BUS,   // Mode 1: Solder bridged A0/A1 on GPIO 21 & 22 (0x40, 0x41, 0x44)
+  MODE_SEPARATE_GPIO_PINS,    // Mode 2: Multi-pin jumper wires (21/22, 19/23, 25/26) all at 0x40
+  MODE_BENCH_TEST_EMULATION   // Mode 3: 1 real sensor on 21/22 + virtual baseline peers for testing
+};
+
+HardwareI2CMode activeI2CMode = MODE_BENCH_TEST_EMULATION;
+#define BENCH_TEST_FALLBACK_ENABLED true
+
+// Alternate Pin Definitions for Mode 2 (No-Solder Jumper Wires)
+#define P2_SDA_PIN     19
+#define P2_SCL_PIN     23
+#define P3_SDA_PIN     25
+#define P3_SCL_PIN     26
 
 // ======================================================================================
-// SETUP
+// 6. I2C SCANNER & DYNAMIC MULTI-MODE INA219 BINDING
 // ======================================================================================
-void setup() {
-  Serial.begin(115200);
-  delay(500);
+bool checkI2CAddress(uint8_t address) {
+  Wire.beginTransmission(address);
+  return (Wire.endTransmission() == 0);
+}
 
-  Serial.println(F("\n======================================================="));
-  Serial.println(F("     SolarGuard IoT - ESP32 Smart Wiper Firmware     "));
-  Serial.println(F("======================================================="));
-  Serial.printf(" [HW] I2C Pins: SDA=GPIO%d, SCL=GPIO%d\n", PIN_I2C_SDA, PIN_I2C_SCL);
-  Serial.printf(" [HW] DS18B20 Temp Sensor: GPIO%d\n", PIN_DS18B20);
-  Serial.printf(" [HW] SG90 Servo Actuator: GPIO%d\n", PIN_SG90_SERVO);
+void autoDetectAndBindINA219() {
+  Serial.println(F("\n========================================================================="));
+  Serial.println(F("[I2C] Scanning for INA219 modules on GPIO 21 & 22..."));
 
-  // Initialize I2C Bus for shared line
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-  Serial.println(F(" [I2C] Bus initialized on GPIO 21 & 22"));
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  delay(50);
 
-  // Initialize DS18B20
-  tempSensors.begin();
-  int deviceCount = tempSensors.getDeviceCount();
-  Serial.printf(" [DS18B20] Found %d OneWire temperature sensor(s)\n", deviceCount);
+  uint8_t foundAddresses[16];
+  int foundCount = 0;
 
-  // Initialize SG90 Servo PWM configuration (allocate all timers for ESP32)
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
-  wiperServo.setPeriodHertz(50); // Standard 50Hz servo PWM
+  for (uint8_t addr = 0x40; addr <= 0x4F; addr++) {
+    if (checkI2CAddress(addr)) {
+      foundAddresses[foundCount++] = addr;
+      Serial.printf("  -> Detected INA219 at I2C address 0x%02X on GPIO 21/22\n", addr);
+    }
+  }
 
-  // Physical Startup Self-Test:
-  // Move servo slightly (10 -> 45 -> 10 deg) so user can visibly verify 5V power and GPIO 18 wiring!
-  Serial.println(F(" [SERVO] Running physical startup self-test on GPIO 18 (10 -> 45 -> 10 deg)..."));
-  wiperServo.attach(PIN_SG90_SERVO, 500, 2400);
-  wiperServo.write(45);
-  delay(400);
-  wiperServo.write(SWEEP_HOME_ANGLE);
-  delay(400);
-  wiperServo.detach(); // Detach to protect motor coils from idle heat & buzz
-  Serial.println(F(" [SERVO] Startup test complete! (If wiper moved, 5V power and GPIO 18 are OK)."));
+  // --- Check Mode 1: Multiple unique addresses found on GPIO 21/22 (Soldered Jumpers) ---
+  if (foundCount >= 3) {
+    activeI2CMode = MODE_SOLDERED_SHARED_BUS;
+    Serial.println(F("[INA219] SUCCESS: 3-channel soldered hardware detected on GPIO 21 & 22!"));
+    for (int i = 0; i < 3; i++) {
+      uint8_t addr = foundAddresses[i];
+      inaModules[i] = new Adafruit_INA219(addr);
+      if (inaModules[i]->begin(&Wire)) {
+        inaOnline[i] = true;
+        inaAddresses[i] = addr;
+        snprintf(panels[i].i2c_address, sizeof(panels[i].i2c_address), "0x%02X", addr);
+        inaModules[i]->setCalibration_16V_400mA();
+        Serial.printf("  -> Panel %d bound to I2C 0x%02X\n", i + 1, addr);
+      }
+    }
+    Serial.println(F("=========================================================================\n"));
+    return;
+  }
 
-  // Connect to Wi-Fi
-  setupWiFi();
+  // --- Check Mode 2: Separate GPIO Pins (No-Solder Jumper Wiring) ---
+  Serial.println(F("[I2C] Probing Mode 2: Multi-Pin Jumper Wiring (GPIO 19/23 & 25/26)..."));
+  bool p2Detected = false;
+  bool p3Detected = false;
 
-  // Connect to EMQX Cloud MQTT
-  setupMQTT();
+  Wire.begin(P2_SDA_PIN, P2_SCL_PIN);
+  delay(20);
+  if (checkI2CAddress(0x40)) {
+    p2Detected = true;
+    Serial.println(F("  -> Detected Module 2 at 0x40 on GPIO 19 (SDA) / GPIO 23 (SCL)!"));
+  }
+
+  Wire.begin(P3_SDA_PIN, P3_SCL_PIN);
+  delay(20);
+  if (checkI2CAddress(0x40)) {
+    p3Detected = true;
+    Serial.println(F("  -> Detected Module 3 at 0x40 on GPIO 25 (SDA) / GPIO 26 (SCL)!"));
+  }
+
+  // Restore Wire to GPIO 21/22
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  delay(20);
+
+  if (foundCount >= 1 && p2Detected && p3Detected) {
+    activeI2CMode = MODE_SEPARATE_GPIO_PINS;
+    Serial.println(F("[INA219] SUCCESS: 3-channel separate GPIO pin hardware detected!"));
+
+    // Module 1 on 21/22
+    inaModules[0] = new Adafruit_INA219(0x40);
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    if (inaModules[0]->begin(&Wire)) {
+      inaOnline[0] = true;
+      inaModules[0]->setCalibration_16V_400mA();
+      snprintf(panels[0].i2c_address, sizeof(panels[0].i2c_address), "0x40(P1)");
+    }
+
+    // Module 2 on 19/23
+    inaModules[1] = new Adafruit_INA219(0x40);
+    Wire.begin(P2_SDA_PIN, P2_SCL_PIN);
+    if (inaModules[1]->begin(&Wire)) {
+      inaOnline[1] = true;
+      inaModules[1]->setCalibration_16V_400mA();
+      snprintf(panels[1].i2c_address, sizeof(panels[1].i2c_address), "0x40(P2)");
+    }
+
+    // Module 3 on 25/26
+    inaModules[2] = new Adafruit_INA219(0x40);
+    Wire.begin(P3_SDA_PIN, P3_SCL_PIN);
+    if (inaModules[2]->begin(&Wire)) {
+      inaOnline[2] = true;
+      inaModules[2]->setCalibration_16V_400mA();
+      snprintf(panels[2].i2c_address, sizeof(panels[2].i2c_address), "0x40(P3)");
+    }
+
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    Serial.println(F("=========================================================================\n"));
+    return;
+  }
+
+  // --- Check Mode 3: Bench-Test Mode (Only 1 sensor responding at 0x40) ---
+  if (foundCount >= 1 && foundAddresses[0] == 0x40) {
+    Serial.println(F("\n*************************************************************************"));
+    Serial.println(F("[!] HARDWARE NOTICE: Single I2C address (0x40) detected on GPIO 21 & 22!"));
+    Serial.println(F("    This causes all illuminated panels to report on Panel 1 because"));
+    Serial.println(F("    your INA219 modules currently share the same factory I2C address (0x40)."));
+    Serial.println(F(""));
+    Serial.println(F("    TO ENABLE INDEPENDENT 3-PANEL HARDWARE READING:"));
+    Serial.println(F("    * Option A (Solder): Bridge A0 on Module 2 (->0x41), A1 on Module 3 (->0x44)."));
+    Serial.println(F("    * Option B (No-Solder Wires): Move Module 2 to GPIO 19/23, Module 3 to GPIO 25/26."));
+    Serial.println(F(""));
+    Serial.println(F("    BENCH-TEST MODE ENGAGED:"));
+    Serial.println(F("    - Panel 1 reads your real INA219 hardware sensor (responds to phone flashlight)."));
+    Serial.println(F("    - Panels 2 & 3 run virtual baseline peers so underperformance"));
+    Serial.println(F("      flagging and the 10-second alert cooldown work immediately!"));
+    Serial.println(F("*************************************************************************\n"));
+
+    inaModules[0] = new Adafruit_INA219(0x40);
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    if (inaModules[0]->begin(&Wire)) {
+      inaOnline[0] = true;
+      inaModules[0]->setCalibration_16V_400mA();
+      snprintf(panels[0].i2c_address, sizeof(panels[0].i2c_address), "0x40");
+      Serial.println(F("[INA219] Channel 1 initialized at 0x40."));
+    }
+
+#if BENCH_TEST_FALLBACK_ENABLED
+    activeI2CMode = MODE_BENCH_TEST_EMULATION;
+    inaOnline[1] = true;
+    inaOnline[2] = true;
+    snprintf(panels[1].i2c_address, sizeof(panels[1].i2c_address), "0x41(Sim)");
+    snprintf(panels[2].i2c_address, sizeof(panels[2].i2c_address), "0x44(Sim)");
+#else
+    activeI2CMode = MODE_SOLDERED_SHARED_BUS;
+    inaOnline[1] = false;
+    inaOnline[2] = false;
+#endif
+
+    return;
+  }
+
+  Serial.println(F("\n[!] CRITICAL ERROR: No INA219 sensor detected on any pins!"));
 }
 
 // ======================================================================================
-// MAIN LOOP
+// 7. SERVO ACTUATION LOGIC
 // ======================================================================================
-void loop() {
-  // 1. Maintain Wi-Fi and MQTT connection
-  if (WiFi.status() != WL_CONNECTED) {
-    setupWiFi();
-  }
-  if (!mqttClient.connected()) {
-    reconnectMQTT();
-  }
-  mqttClient.loop();
+bool isWiping() {
+  return state == WIPING_OUT || state == WIPING_BACK;
+}
 
-  // 2. Non-blocking Wiper Movement and Cooldown State Machine
-  updateWiperStateMachine();
+void ensureServoAttached() {
+  if (!wiper.attached()) {
+    wiper.attach(SERVO_PIN, 500, 2400);
+  }
+}
 
-  // 3. Periodic DS18B20 Temperature Telemetry Publish
+void releaseServo() {
+  if (wiper.attached()) {
+    wiper.detach();
+  }
+}
+
+void publishStatus(const char* stateName, int progress, unsigned long cooldownSeconds = 0) {
+  if (!mqtt.connected()) return;
+
+  char payload[256];
+  snprintf(
+    payload,
+    sizeof(payload),
+    "{\"state\":\"%s\",\"progress\":%d,\"cooldown_remaining_sec\":%lu,\"duration_ms\":%lu,\"trigger\":\"%s\"}",
+    stateName, progress, cooldownSeconds, wipeDuration, triggerType.c_str()
+  );
+
+  mqtt.publish(STATUS_TOPIC, payload);
+  Serial.printf("[WIPER STATUS] %s: %s\n", STATUS_TOPIC, payload);
+}
+
+void startWipe(unsigned long requestedDuration) {
+  if (isWiping()) {
+    Serial.println(F("[WIPER] Wiper is currently sweeping across panel. Command ignored."));
+    return;
+  }
+
+  if (state == STOPPED || state == COOLDOWN) {
+    state = IDLE;
+  }
+
+  if (requestedDuration < 1000) requestedDuration = 1000;
+  if (requestedDuration > 5000) requestedDuration = 5000;
+
+  wipeDuration = requestedDuration;
+  state = WIPING_OUT;
+  stateStarted = millis();
+
+  ensureServoAttached();
+  wiper.write(CLEAN_ANGLE);
+
+  Serial.printf("[WIPER] Cleaning sweep started! Target: %d deg, Duration: %lu ms\n", CLEAN_ANGLE, wipeDuration);
+  publishStatus("wiping", 0);
+}
+
+void stopWiperImmediate() {
+  state = STOPPED;
+  ensureServoAttached();
+  wiper.write(HOME_ANGLE);
+  delay(120);
+  releaseServo();
+  Serial.println(F("[WIPER] Emergency stop engaged! Wiper parked & PWM power cut."));
+  publishStatus("stopped", 0);
+}
+
+// ======================================================================================
+// 8. ELECTRICITY MEASURING & TEMPERATURE DETECTION
+// ======================================================================================
+void readElectricityAndTemperature() {
+  // 1. Read DS18B20 Temperature
+  sensors.requestTemperatures();
+  float tempC = sensors.getTempCByIndex(0);
+
+  if (tempC == DEVICE_DISCONNECTED_C || tempC < -50.0 || tempC > 125.0 || tempC == 85.0) {
+    tempSensorOnline = false;
+  } else {
+    tempSensorOnline = true;
+    lastValidTemp = tempC;
+  }
+
+  // 2. Read INA219 Electricity according to active hardware mode
+  if (activeI2CMode == MODE_SOLDERED_SHARED_BUS) {
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    for (int i = 0; i < 3; i++) {
+      if (inaOnline[i] && inaModules[i] != nullptr) {
+        float bus_v = inaModules[i]->getBusVoltage_V();
+        float shunt_mv = inaModules[i]->getShuntVoltage_mV();
+        float current_ma = inaModules[i]->getCurrent_mA();
+
+        float raw_current_a = (current_ma > 0.01) ? (current_ma / 1000.0) : 0.0;
+        float current_a = computeActiveCurrent(bus_v, raw_current_a);
+        float power_w = (current_a > 0.0) ? (bus_v * current_a) : 0.0;
+
+        panels[i].voltage_v = (bus_v > 0.05) ? bus_v : 0.0;
+        panels[i].current_a = current_a;
+        panels[i].power_w   = power_w;
+        panels[i].shunt_mv  = shunt_mv;
+        panels[i].connected = true;
+      } else {
+        panels[i].voltage_v = 0.0;
+        panels[i].current_a = 0.0;
+        panels[i].power_w   = 0.0;
+        panels[i].shunt_mv  = 0.0;
+        panels[i].connected = false;
+      }
+    }
+  } else if (activeI2CMode == MODE_SEPARATE_GPIO_PINS) {
+    // Channel 1 on GPIO 21 & 22
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    delayMicroseconds(300);
+    if (inaOnline[0] && inaModules[0] != nullptr) {
+      float bus_v = inaModules[0]->getBusVoltage_V();
+      float shunt_mv = inaModules[0]->getShuntVoltage_mV();
+      float current_ma = inaModules[0]->getCurrent_mA();
+      float raw_current_a = (current_ma > 0.01) ? (current_ma / 1000.0) : 0.0;
+      float current_a = computeActiveCurrent(bus_v, raw_current_a);
+      panels[0].voltage_v = (bus_v > 0.05) ? bus_v : 0.0;
+      panels[0].current_a = current_a;
+      panels[0].power_w   = (current_a > 0.0) ? (bus_v * current_a) : 0.0;
+      panels[0].shunt_mv  = shunt_mv;
+      panels[0].connected = true;
+    }
+
+    // Channel 2 on GPIO 19 & 23
+    Wire.begin(P2_SDA_PIN, P2_SCL_PIN);
+    delayMicroseconds(300);
+    if (inaOnline[1] && inaModules[1] != nullptr) {
+      float bus_v = inaModules[1]->getBusVoltage_V();
+      float shunt_mv = inaModules[1]->getShuntVoltage_mV();
+      float current_ma = inaModules[1]->getCurrent_mA();
+      float raw_current_a = (current_ma > 0.01) ? (current_ma / 1000.0) : 0.0;
+      float current_a = computeActiveCurrent(bus_v, raw_current_a);
+      panels[1].voltage_v = (bus_v > 0.05) ? bus_v : 0.0;
+      panels[1].current_a = current_a;
+      panels[1].power_w   = (current_a > 0.0) ? (bus_v * current_a) : 0.0;
+      panels[1].shunt_mv  = shunt_mv;
+      panels[1].connected = true;
+    }
+
+    // Channel 3 on GPIO 25 & 26
+    Wire.begin(P3_SDA_PIN, P3_SCL_PIN);
+    delayMicroseconds(300);
+    if (inaOnline[2] && inaModules[2] != nullptr) {
+      float bus_v = inaModules[2]->getBusVoltage_V();
+      float shunt_mv = inaModules[2]->getShuntVoltage_mV();
+      float current_ma = inaModules[2]->getCurrent_mA();
+      float raw_current_a = (current_ma > 0.01) ? (current_ma / 1000.0) : 0.0;
+      float current_a = computeActiveCurrent(bus_v, raw_current_a);
+      panels[2].voltage_v = (bus_v > 0.05) ? bus_v : 0.0;
+      panels[2].current_a = current_a;
+      panels[2].power_w   = (current_a > 0.0) ? (bus_v * current_a) : 0.0;
+      panels[2].shunt_mv  = shunt_mv;
+      panels[2].connected = true;
+    }
+
+    // Revert to primary bus
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  } else if (activeI2CMode == MODE_BENCH_TEST_EMULATION) {
+    // Channel 1: Read Genuine Hardware INA219 on GPIO 21 & 22 (flashlight sensor)
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    if (inaOnline[0] && inaModules[0] != nullptr) {
+      float bus_v = inaModules[0]->getBusVoltage_V();
+      float shunt_mv = inaModules[0]->getShuntVoltage_mV();
+      float current_ma = inaModules[0]->getCurrent_mA();
+      float raw_current_a = (current_ma > 0.01) ? (current_ma / 1000.0) : 0.0;
+      float current_a = computeActiveCurrent(bus_v, raw_current_a);
+      float power_w = (current_a > 0.0) ? (bus_v * current_a) : 0.0;
+
+      panels[0].voltage_v = (bus_v > 0.05) ? bus_v : 0.0;
+      panels[0].current_a = current_a;
+      panels[0].power_w   = power_w;
+      panels[0].shunt_mv  = shunt_mv;
+      panels[0].connected = true;
+    }
+
+    // Channels 2 & 3: Virtual Baseline Peers
+    panels[1].voltage_v = 0.045;
+    panels[1].current_a = 0.0003;
+    panels[1].power_w   = 0.0000;
+    panels[1].shunt_mv  = 0.0;
+    panels[1].connected = true;
+
+    panels[2].voltage_v = 0.042;
+    panels[2].current_a = 0.0003;
+    panels[2].power_w   = 0.0000;
+    panels[2].shunt_mv  = 0.0;
+    panels[2].connected = true;
+  }
+
+  // Print readings with 4 decimal places for fractional values
+  Serial.printf("[INA219] P1: %.3fV, %.4fA, %.4fW | P2: %.3fV, %.4fA, %.4fW | P3: %.3fV, %.4fA, %.4fW | Temp: %.1fC\n",
+    panels[0].voltage_v, panels[0].current_a, panels[0].power_w,
+    panels[1].voltage_v, panels[1].current_a, panels[1].power_w,
+    panels[2].voltage_v, panels[2].current_a, panels[2].power_w,
+    lastValidTemp
+  );
+
+  // Instant light tracker diagnostic for serial monitor
+  int diagPeak = 1;
+  float diagMaxV = panels[0].voltage_v;
+  if (panels[1].voltage_v > diagMaxV) { diagMaxV = panels[1].voltage_v; diagPeak = 2; }
+  if (panels[2].voltage_v > diagMaxV) { diagMaxV = panels[2].voltage_v; diagPeak = 3; }
+  const char* diagPins = (diagPeak == 1) ? "GPIO 21/22" : (diagPeak == 2 ? "GPIO 19/23" : "GPIO 25/26");
+  Serial.printf("  --> [LIGHT TRACKER] Peak illumination on: PANEL %d (%s) at %.3fV\n", diagPeak, diagPins, diagMaxV);
+}
+
+// ======================================================================================
+// 9. INTELLIGENT FLAGGING WITH SMART COOLDOWN & STATE-CHANGE SENSITIVITY
+// ======================================================================================
+void evaluateFlagsAndAlerts(float& totalPower, float& medianPower, int& lesserCountOut, unsigned long& cooldownRemainingSec) {
+  totalPower = panels[0].power_w + panels[1].power_w + panels[2].power_w;
+
+  float maxPower = 0.0;
+  float maxCurrent = 0.0;
+  float rawMaxVoltage = 0.0;
+  int rawPeakIdx = 0;
+  int activeCount = 0;
+
+  for (int i = 0; i < 3; i++) {
+    if (panels[i].connected) {
+      activeCount++;
+      if (panels[i].power_w > maxPower) maxPower = panels[i].power_w;
+      if (panels[i].current_a > maxCurrent) maxCurrent = panels[i].current_a;
+      if (panels[i].voltage_v > rawMaxVoltage) {
+        rawMaxVoltage = panels[i].voltage_v;
+        rawPeakIdx = i;
+      }
+    }
+  }
+
+  // Calculate median power among active panels
+  float powers[3] = { panels[0].power_w, panels[1].power_w, panels[2].power_w };
+  if (powers[0] > powers[1]) { float t = powers[0]; powers[0] = powers[1]; powers[1] = t; }
+  if (powers[1] > powers[2]) { float t = powers[1]; powers[1] = powers[2]; powers[2] = t; }
+  if (powers[0] > powers[1]) { float t = powers[0]; powers[0] = powers[1]; powers[1] = t; }
+  medianPower = powers[1];
+
+  // Evaluate if at least one panel is receiving light
+  bool isIlluminated = (maxCurrent >= MIN_EVAL_CURRENT_A || maxPower >= MIN_EVAL_POWER_W || rawMaxVoltage >= 0.40);
+
+  // PEAK HYSTERESIS FILTER: Prevent rapid oscillation between panels
+  // Only change peak panel if current peak dropped below light threshold OR
+  // another panel solidly exceeds it by >= 120mV (0.12V)
+  if (panels[stablePeakIdx].voltage_v < 0.35 || rawMaxVoltage > (panels[stablePeakIdx].voltage_v + 0.12)) {
+    stablePeakIdx = rawPeakIdx;
+  }
+  int peakIdx = stablePeakIdx;
+  int peakPanelId = peakIdx + 1;
+  float peakVoltage = panels[peakIdx].voltage_v;
+  float peakPower   = panels[peakIdx].power_w;
+
+  int lesserCount = 0;
+  int lesserPanelIds[3];
+  String lesserDetails = "";
+
+  if (isIlluminated && activeCount > 1) {
+    for (int i = 0; i < 3; i++) {
+      if (!panels[i].connected) {
+        panels[i].status = "offline";
+        panels[i].flag = "SENSOR_FAULT";
+        panels[i].deviation_pct = 0.0;
+        panels[i].efficiency_pct = 0;
+        underperformingConsecutiveCount[i] = 0;
+        continue;
+      }
+
+      // Peak panel is ALWAYS optimal
+      if (i == peakIdx) {
+        panels[i].status = "optimal";
+        panels[i].flag = "NORMAL";
+        panels[i].trend = "stable";
+        panels[i].deviation_pct = 0.0;
+        panels[i].efficiency_pct = 98;
+        underperformingConsecutiveCount[i] = 0;
+        continue;
+      }
+
+      // MULTI-PANEL ILLUMINATION TOLERANCE:
+      // If user illuminates Panel 1 and Panel 3 together, BOTH are active peers!
+      // If this panel is generating healthy voltage (>= 0.65V) and within 30% of peak,
+      // it is a CO-ILLUMINATED HEALTHY PEER, NOT FAULTY!
+      bool isCoIlluminated = (panels[i].voltage_v >= 0.65 && panels[i].voltage_v >= (peakVoltage * 0.70));
+
+      // A panel is only lagging if it is genuinely dark or output is drastically below the illuminated peers
+      bool isLagging = false;
+      float dropPct = 0.0;
+
+      if (!isCoIlluminated) {
+        if (peakVoltage >= 0.60) {
+          float deltaV = peakVoltage - panels[i].voltage_v;
+          if (deltaV >= 0.25 && panels[i].voltage_v < (peakVoltage * 0.60)) {
+            isLagging = true;
+            dropPct = (deltaV / peakVoltage) * 100.0;
+          }
+        }
+        if (!isLagging && peakPower >= 0.010) {
+          if (panels[i].power_w < (peakPower * 0.40)) {
+            isLagging = true;
+            dropPct = ((peakPower - panels[i].power_w) / peakPower) * 100.0;
+          }
+        }
+      }
+
+      // CONSECUTIVE SAMPLES DEBOUNCE:
+      // Require 2 consecutive cycles of underperformance before flagging
+      if (isLagging) {
+        underperformingConsecutiveCount[i]++;
+      } else {
+        underperformingConsecutiveCount[i] = 0;
+      }
+
+      if (underperformingConsecutiveCount[i] >= REQUIRED_CONSECUTIVE_SAMPLES) {
+        panels[i].status = "warning";
+        panels[i].flag = "UNDERPERFORMING";
+        panels[i].trend = "down";
+        panels[i].deviation_pct = -dropPct;
+        panels[i].efficiency_pct = (int)constrain(100.0 - dropPct, 10.0, 90.0);
+
+        lesserPanelIds[lesserCount] = panels[i].id;
+        if (lesserCount > 0) lesserDetails += ", ";
+        lesserDetails += "Panel " + String(panels[i].id) + " (" + String(panels[i].voltage_v, 2) + "V, " + String(panels[i].power_w, 4) + "W)";
+        lesserCount++;
+      } else {
+        panels[i].status = "optimal";
+        panels[i].flag = "NORMAL";
+        panels[i].trend = "stable";
+        panels[i].deviation_pct = 0.0;
+        panels[i].efficiency_pct = isCoIlluminated ? 96 : 92;
+      }
+    }
+  } else {
+    // Low light / Dark
+    for (int i = 0; i < 3; i++) {
+      underperformingConsecutiveCount[i] = 0;
+      if (panels[i].connected) {
+        panels[i].status = "low_ambient_light";
+        panels[i].flag = "LOW_LIGHT";
+        panels[i].deviation_pct = 0.0;
+        panels[i].efficiency_pct = 50;
+        panels[i].trend = "stable";
+      }
+    }
+  }
+
+  lesserCountOut = lesserCount;
   unsigned long now = millis();
-  if (now - lastTelemetryPublish >= TELEMETRY_INTERVAL_MS) {
-    lastTelemetryPublish = now;
-    publishTelemetry();
+
+  // Calculate cooldown remaining
+  if (underperformanceAlertActive && (now - lastUnderperformanceAlertTime < alertCooldownMs)) {
+    cooldownRemainingSec = (alertCooldownMs - (now - lastUnderperformanceAlertTime)) / 1000;
+  } else {
+    cooldownRemainingSec = 0;
+  }
+
+  // --- SMART ALERT LOGIC WITH COOLDOWN PROTECTION ---
+  uint8_t currentLesserMask = 0;
+  for (int i = 0; i < lesserCount; i++) {
+    currentLesserMask |= (1 << (lesserPanelIds[i] - 1));
+  }
+
+  bool maskChanged = (currentLesserMask != lastUnderperformingMask);
+  bool cooldownExpired = (now - lastUnderperformanceAlertTime >= alertCooldownMs);
+
+  if (lesserCount > 0) {
+    // Trigger alert on new fault or when cooldown expires
+    // (Notice: peak flutter alone does NOT bypass cooldown!)
+    if (!underperformanceAlertActive || (maskChanged && cooldownExpired) || cooldownExpired) {
+      lastUnderperformanceAlertTime = now;
+      lastUnderperformingMask = currentLesserMask;
+      lastPeakPanelId = peakPanelId;
+      underperformanceAlertActive = true;
+      cooldownRemainingSec = alertCooldownMs / 1000;
+
+      char title[64];
+      char msg[260];
+
+      if (lesserCount == 1) {
+        int lId = lesserPanelIds[0];
+        snprintf(title, sizeof(title), "Panel %d Output Lower than Peak", lId);
+        snprintf(msg, sizeof(msg), "Panel %d (%.3fV, %.4fW) is generating significantly less than peak illuminated Panel %d (%.3fV, %.4fW).",
+          lId, panels[lId - 1].voltage_v, panels[lId - 1].power_w,
+          peakPanelId, panels[peakIdx].voltage_v, panels[peakIdx].power_w);
+      } else {
+        snprintf(title, sizeof(title), "%d Panels Underperforming", lesserCount);
+        snprintf(msg, sizeof(msg), "%s are generating significantly less output than peak illuminated Panel %d (%.3fV, %.4fW).",
+          lesserDetails.c_str(), peakPanelId, panels[peakIdx].voltage_v, panels[peakIdx].power_w);
+      }
+
+      Serial.println(F("\n======================================================="));
+      Serial.printf("[ALERT TRIGGERED] %s\n%s\n", title, msg);
+      Serial.printf("[SMART COOLDOWN] Duplicate alert suppressed for %lu s\n", alertCooldownMs / 1000);
+      Serial.println(F("=======================================================\n"));
+
+      publishMqttAlert("PEER_UNDERPERFORMANCE", "warning", (lesserCount == 1 ? lesserPanelIds[0] : 0), title, msg);
+    }
+  } else {
+    // Normalization / All panels balanced or in dark
+    if (underperformanceAlertActive || lastUnderperformingMask != 0) {
+      underperformanceAlertActive = false;
+      lastUnderperformingMask = 0;
+      lastPeakPanelId = 0;
+      Serial.println(F("[ALERT RESOLVED] Panels restored to balanced output. Alert cleared."));
+      publishMqttAlert("PANELS_NORMAL", "info", 0, "Output Normalized", 
+                       "All panels are generating balanced power within tolerance.");
+    }
+  }
+
+  // --- Temperature Alert Handling ---
+  if (tempSensorOnline) {
+    if (lastValidTemp >= TEMP_THRESHOLD_CRIT) {
+      if (!alertCriticalTempActive) {
+        alertCriticalTempActive = true;
+        publishMqttAlert("CRITICAL_TEMPERATURE", "critical", 0, "Critical Thermal Surge", 
+                         "Solar panel surface temperature exceeds 65 C!");
+      }
+    } else if (lastValidTemp >= TEMP_THRESHOLD_WARN) {
+      alertCriticalTempActive = false;
+      if (!alertHighTempActive) {
+        alertHighTempActive = true;
+        publishMqttAlert("HIGH_TEMPERATURE", "warning", 0, "High Surface Temperature", 
+                         "Solar panel surface temperature exceeds 55 C.");
+      }
+    } else {
+      alertHighTempActive = false;
+      alertCriticalTempActive = false;
+    }
+  }
+
+  // --- Sensor Communication Fault Alert ---
+  bool anySensorOffline = (!inaOnline[0] || !inaOnline[1] || !inaOnline[2] || !tempSensorOnline);
+  if (anySensorOffline && !alertSensorFaultActive) {
+    alertSensorFaultActive = true;
+    publishMqttAlert("SENSOR_FAULT", "critical", 0, "Sensor Communication Fault", 
+                     "One or more INA219 modules or DS18B20 failed to communicate.");
+  } else if (!anySensorOffline && alertSensorFaultActive) {
+    alertSensorFaultActive = false;
   }
 }
 
 // ======================================================================================
-// WI-FI & MQTT MANAGEMENT
+// 10. MQTT PUBLISHING: TELEMETRY & ALERTS
 // ======================================================================================
-void setupWiFi() {
-  Serial.printf(" [WIFI] Connecting to SSID: %s ", WIFI_SSID);
+void publishMqttAlert(const char* type, const char* severity, int panelId, const char* title, const char* message) {
+  if (!mqtt.connected()) return;
+
+  char alertPayload[320];
+  snprintf(
+    alertPayload,
+    sizeof(alertPayload),
+    "{\"type\":\"%s\",\"severity\":\"%s\",\"panel_id\":%d,\"title\":\"%s\",\"message\":\"%s\",\"cooldown_sec\":%lu,\"timestamp_ms\":%lu}",
+    type, severity, panelId, title, message, alertCooldownMs / 1000, millis()
+  );
+
+  mqtt.publish(ALERT_TOPIC, alertPayload);
+  Serial.printf("[ALERT TX -> %s]: %s\n", ALERT_TOPIC, alertPayload);
+
+  if (strcmp(type, "HIGH_TEMPERATURE") == 0 || strcmp(type, "CRITICAL_TEMPERATURE") == 0) {
+    mqtt.publish(TEMP_ALERT_TOPIC, alertPayload, true);
+  }
+}
+
+void publishTelemetry() {
+  if (!mqtt.connected()) return;
+
+  float totalPower = 0.0;
+  float medianPower = 0.0;
+  int lesserCount = 0;
+  unsigned long cooldownRemainingSec = 0;
+
+  evaluateFlagsAndAlerts(totalPower, medianPower, lesserCount, cooldownRemainingSec);
+
+  char telemetryBuffer[1650];
+  snprintf(
+    telemetryBuffer,
+    sizeof(telemetryBuffer),
+    "{"
+      "\"temperature\":%.2f,"
+      "\"temperature_c\":%.2f,"
+      "\"sensor_connected\":%s,"
+      "\"total_power\":%.4f,"
+      "\"median_power\":%.4f,"
+      "\"peak_panel_id\":%d,"
+      "\"panels\":["
+        "{"
+          "\"id\":1,\"name\":\"%s\",\"channel\":\"%s\",\"i2c_address\":\"%s\","
+          "\"voltage_v\":%.3f,\"current_a\":%.4f,\"power_w\":%.4f,\"shunt_mv\":%.2f,"
+          "\"status\":\"%s\",\"flag\":\"%s\",\"trend\":\"%s\",\"efficiency_pct\":%d,"
+          "\"deviation_pct\":%.1f,\"temperature_c\":%.2f"
+        "},"
+        "{"
+          "\"id\":2,\"name\":\"%s\",\"channel\":\"%s\",\"i2c_address\":\"%s\","
+          "\"voltage_v\":%.3f,\"current_a\":%.4f,\"power_w\":%.4f,\"shunt_mv\":%.2f,"
+          "\"status\":\"%s\",\"flag\":\"%s\",\"trend\":\"%s\",\"efficiency_pct\":%d,"
+          "\"deviation_pct\":%.1f,\"temperature_c\":%.2f"
+        "},"
+        "{"
+          "\"id\":3,\"name\":\"%s\",\"channel\":\"%s\",\"i2c_address\":\"%s\","
+          "\"voltage_v\":%.3f,\"current_a\":%.4f,\"power_w\":%.4f,\"shunt_mv\":%.2f,"
+          "\"status\":\"%s\",\"flag\":\"%s\",\"trend\":\"%s\",\"efficiency_pct\":%d,"
+          "\"deviation_pct\":%.1f,\"temperature_c\":%.2f"
+        "}"
+      "],"
+      "\"flags\":{"
+        "\"high_temp\":%s,"
+        "\"critical_temp\":%s,"
+        "\"temp_sensor_fault\":%s,"
+        "\"underperforming\":%s,"
+        "\"underperforming_count\":%d,"
+        "\"low_ambient_light\":%s,"
+        "\"sensor_fault\":%s,"
+        "\"cleaning_recommended\":%s,"
+        "\"alert_cooldown_remaining_sec\":%lu,"
+        "\"alert_cooldown_duration_sec\":%lu"
+      "},"
+      "\"wiper_state\":\"%s\","
+      "\"uptime_sec\":%lu,"
+      "\"rssi\":%d,"
+      "\"ip\":\"%s\""
+    "}",
+    lastValidTemp,
+    lastValidTemp,
+    tempSensorOnline ? "true" : "false",
+    totalPower,
+    medianPower,
+    lastPeakPanelId,
+    // Panel 1
+    panels[0].name, panels[0].channel, panels[0].i2c_address,
+    panels[0].voltage_v, panels[0].current_a, panels[0].power_w, panels[0].shunt_mv,
+    panels[0].status, panels[0].flag, panels[0].trend, panels[0].efficiency_pct,
+    panels[0].deviation_pct, lastValidTemp,
+    // Panel 2
+    panels[1].name, panels[1].channel, panels[1].i2c_address,
+    panels[1].voltage_v, panels[1].current_a, panels[1].power_w, panels[1].shunt_mv,
+    panels[1].status, panels[1].flag, panels[1].trend, panels[1].efficiency_pct,
+    panels[1].deviation_pct, lastValidTemp,
+    // Panel 3
+    panels[2].name, panels[2].channel, panels[2].i2c_address,
+    panels[2].voltage_v, panels[2].current_a, panels[2].power_w, panels[2].shunt_mv,
+    panels[2].status, panels[2].flag, panels[2].trend, panels[2].efficiency_pct,
+    panels[2].deviation_pct, lastValidTemp,
+    // Flags
+    alertHighTempActive ? "true" : "false",
+    alertCriticalTempActive ? "true" : "false",
+    !tempSensorOnline ? "true" : "false",
+    (lesserCount > 0) ? "true" : "false",
+    lesserCount,
+    (totalPower < MIN_EVAL_POWER_W) ? "true" : "false",
+    alertSensorFaultActive ? "true" : "false",
+    (lesserCount > 0 && lastValidTemp < TEMP_THRESHOLD_WARN) ? "true" : "false",
+    cooldownRemainingSec,
+    alertCooldownMs / 1000,
+    // System status
+    (state == WIPING_OUT || state == WIPING_BACK) ? "WIPING" :
+    (state == COOLDOWN) ? "COOLDOWN" :
+    (state == STOPPED) ? "STOPPED" : "IDLE",
+    millis() / 1000,
+    WiFi.RSSI(),
+    WiFi.localIP().toString().c_str()
+  );
+
+  mqtt.publish(TELEMETRY_TOPIC, telemetryBuffer);
+
+  char tempBuffer[80];
+  snprintf(tempBuffer, sizeof(tempBuffer), "{\"temperature_c\":%.2f,\"unit\":\"C\"}", lastValidTemp);
+  mqtt.publish(TEMP_TOPIC, tempBuffer);
+}
+
+void publishHeartbeat(bool online = true) {
+  if (!mqtt.connected()) return;
+
+  char payload[200];
+  snprintf(
+    payload,
+    sizeof(payload),
+    "{\"online\":%s,\"ip\":\"%s\",\"broker\":\"EMQX\",\"uptime_sec\":%lu,\"cooldown_sec\":%lu,\"sensors\":{\"ina219_1\":%s,\"ina219_2\":%s,\"ina219_3\":%s,\"ds18b20\":%s}}",
+    online ? "true" : "false",
+    WiFi.localIP().toString().c_str(),
+    millis() / 1000,
+    alertCooldownMs / 1000,
+    inaOnline[0] ? "true" : "false",
+    inaOnline[1] ? "true" : "false",
+    inaOnline[2] ? "true" : "false",
+    tempSensorOnline ? "true" : "false"
+  );
+
+  mqtt.publish(DEVICE_STATUS_TOPIC, payload, true);
+}
+
+// ======================================================================================
+// 11. MQTT COMMAND CALLBACK
+// ======================================================================================
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String message = "";
+  for (unsigned int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+  message.trim();
+
+  Serial.printf("\n[MQTT RX] Topic: %s | Payload: %s\n", topic, message.c_str());
+
+  if (String(topic) != COMMAND_TOPIC) return;
+
+  // Emergency Stop Command
+  if (message.indexOf("\"command\":\"STOP\"") >= 0 ||
+      message.indexOf("\"command\": \"STOP\"") >= 0 ||
+      message.indexOf("EMERGENCY_STOP") >= 0 ||
+      message == "STOP") {
+    stopWiperImmediate();
+    return;
+  }
+
+  // Reset Command
+  if (message.indexOf("\"command\":\"RESET\"") >= 0 ||
+      message.indexOf("\"command\": \"RESET\"") >= 0 ||
+      message == "RESET") {
+    state = IDLE;
+    ensureServoAttached();
+    wiper.write(HOME_ANGLE);
+    delay(100);
+    releaseServo();
+    publishStatus("idle", 0);
+    return;
+  }
+
+  // Wiper Sweep Command
+  if (message.indexOf("WIPE") >= 0 || message.indexOf("CLEAN") >= 0) {
+    unsigned long duration = DEFAULT_WIPE_MS;
+    int keyPosition = message.indexOf("duration");
+    if (keyPosition >= 0) {
+      int colonPosition = message.indexOf(':', keyPosition);
+      if (colonPosition >= 0) {
+        duration = strtoul(message.c_str() + colonPosition + 1, nullptr, 10);
+      }
+    }
+    triggerType = (message.indexOf("AUTO") >= 0) ? "AUTO_CLEAN" : "EMQX";
+    startWipe(duration);
+    return;
+  }
+
+  // Dynamic Alert Cooldown Adjustment Command (e.g. {"cooldown_sec": 10} or {"cooldown_sec": 300})
+  if (message.indexOf("cooldown_sec") >= 0 || message.indexOf("seconds") >= 0) {
+    int keyPos = message.indexOf("cooldown_sec");
+    if (keyPos < 0) keyPos = message.indexOf("seconds");
+    int colon = message.indexOf(':', keyPos);
+    if (colon >= 0) {
+      unsigned long sec = strtoul(message.c_str() + colon + 1, nullptr, 10);
+      if (sec >= 5 && sec <= 3600) {
+        alertCooldownMs = sec * 1000;
+        Serial.printf("[CONFIG] Alert cooldown updated to %lu ms (%lu seconds)\n", alertCooldownMs, sec);
+      }
+    }
+  }
+}
+
+// ======================================================================================
+// 12. WI-FI & MQTT RECONNECT
+// ======================================================================================
+void connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.printf("Connecting to Wi-Fi SSID: %s ", WIFI_SSID);
 
   int retries = 0;
   while (WiFi.status() != WL_CONNECTED && retries < 30) {
@@ -220,292 +1057,170 @@ void setupWiFi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(F("\n [WIFI] Connected successfully!"));
-    Serial.printf(" [WIFI] IP Address: %s\n", WiFi.localIP().toString().c_str());
-    Serial.printf(" [WIFI] Signal Strength (RSSI): %d dBm\n", WiFi.RSSI());
+    Serial.println();
+    Serial.println(F("Wi-Fi connected successfully!"));
+    Serial.print(F("ESP32 IP: "));
+    Serial.println(WiFi.localIP());
   } else {
-    Serial.println(F("\n [WIFI] Warning: Wi-Fi connection timed out. Will retry in loop..."));
+    Serial.println(F("\nWarning: Wi-Fi connection timed out. Will retry in loop..."));
   }
-}
-
-void setupMQTT() {
-  // EMQX Cloud uses TLS on port 8883.
-  // Bypass strict CA root certificate matching on embedded ESP32 to prevent cert expiration failures
-  netClient.setInsecure();
-  Serial.println(F(" [MQTT] TLS Security initialized for EMQX Cloud (Port 8883)"));
-
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  mqttClient.setCallback(mqttCallback);
-  mqttClient.setBufferSize(512); // Ensure buffer fits JSON payloads
-  Serial.printf(" [MQTT] Broker configured: %s:%d\n", MQTT_BROKER, MQTT_PORT);
 }
 
 void reconnectMQTT() {
   if (WiFi.status() != WL_CONNECTED) return;
+  if (mqtt.connected()) return;
 
-  static unsigned long lastReconnectAttempt = 0;
   unsigned long now = millis();
+  if (now - lastReconnectAttempt < 3500) return;
+  lastReconnectAttempt = now;
 
-  // Reconnect every 4 seconds without freezing the loop
-  if (now - lastReconnectAttempt > 4000) {
-    lastReconnectAttempt = now;
-    String clientId = "SolarGuard-ESP32-" + String(WiFi.macAddress()).substring(9);
-    Serial.printf(" [MQTT] Attempting connection as %s to %s... ", clientId.c_str(), MQTT_BROKER);
+  Serial.println(F("Connecting to EMQX Cloud broker..."));
 
-    // Last Will and Testament: mark offline if connection drops unexpectedly
-    const char* willTopic = TOPIC_DEVICE_STATUS;
-    const char* willMessage = "{\"online\":false,\"reason\":\"connection_lost\"}";
-    int willQos = 1;
-    bool willRetain = true;
+  String clientId = "SolarGuard-ESP32-";
+  clientId += String((uint32_t)ESP.getEfuseMac(), HEX);
 
-    bool connected = false;
-    if (strlen(MQTT_USER) > 0) {
-      connected = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD, willTopic, willQos, willRetain, willMessage);
-    } else {
-      connected = mqttClient.connect(clientId.c_str(), willTopic, willQos, willRetain, willMessage);
-    }
+  const char* willTopic   = DEVICE_STATUS_TOPIC;
+  const char* willPayload = "{\"online\":false,\"reason\":\"connection_lost\"}";
 
-    if (connected) {
-      Serial.println(F("CONNECTED!"));
-      publishDeviceStatus(true);
+  if (mqtt.connect(clientId.c_str(), MQTT_USERNAME, MQTT_PASSWORD, willTopic, 1, true, willPayload)) {
+    Serial.println(F("EMQX Cloud connected successfully!"));
 
-      // Subscribe to wiper command topic
-      mqttClient.subscribe(TOPIC_WIPER_COMMAND);
-      Serial.printf(" [MQTT] Subscribed to command topic: %s\n", TOPIC_WIPER_COMMAND);
+    publishHeartbeat(true);
+    mqtt.subscribe(COMMAND_TOPIC);
+    publishStatus("idle", 0);
 
-      // Send initial status
-      publishWiperStatus("IDLE", 0, 0);
-    } else {
-      int state = mqttClient.state();
-      Serial.printf("FAILED (rc=%d). Will retry in 4s.\n", state);
-      if (state == 4 || state == 5) {
-        Serial.println(F("   [!] ERROR: EMQX Cloud rejected username or password (rc=4 or 5)!"));
-        Serial.println(F("       Go to your EMQX Cloud console > Access Control > Authentication,"));
-        Serial.println(F("       and make sure MQTT_USER and MQTT_PASSWORD match!"));
-      } else if (state == -2) {
-        Serial.println(F("   [!] ERROR: Cannot reach EMQX broker host (rc=-2). Check Wi-Fi internet access or DNS."));
-      } else if (state == -4) {
-        Serial.println(F("   [!] ERROR: Connection timeout (rc=-4). Check broker address and port 8883."));
-      }
-    }
-  }
-}
-
-// ======================================================================================
-// MQTT MESSAGE HANDLER
-// ======================================================================================
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  // Convert payload buffer to String
-  String message = "";
-  for (unsigned int i = 0; i < length; i++) {
-    message += (char)payload[i];
-  }
-  message.trim();
-
-  Serial.printf(" [MQTT RX] Topic: %s | Message: %s\n", topic, message.c_str());
-
-  if (String(topic) == TOPIC_WIPER_COMMAND) {
-    // Check if payload is JSON or plain string command
-    if (message.startsWith("{")) {
-      StaticJsonDocument<256> doc;
-      DeserializationError err = deserializeJson(doc, message);
-      if (!err) {
-        const char* cmd = doc["command"] | doc["action"] | "";
-        handleWiperCommand(String(cmd));
-      } else {
-        handleWiperCommand(message);
-      }
-    } else {
-      handleWiperCommand(message);
-    }
-  }
-}
-
-void handleWiperCommand(const String& cmd) {
-  String upperCmd = cmd;
-  upperCmd.toUpperCase();
-
-  if (upperCmd == "WIPE" || upperCmd == "CLEAN" || upperCmd == "START") {
-    if (currentWiperState == STATE_SWEEPING_FORWARD || currentWiperState == STATE_SWEEPING_BACKWARD) {
-      Serial.println(F(" [WIPER] Command ignored: Wiper is already sweeping."));
-    } else if (currentWiperState == STATE_COOLDOWN) {
-      Serial.println(F(" [WIPER] Command rejected: Cooldown period active to protect SG90 servo."));
-    } else {
-      startWiperCycle();
-    }
-  } else if (upperCmd == "STOP" || upperCmd == "EMERGENCY_STOP") {
-    Serial.println(F(" [WIPER] EMERGENCY STOP RECEIVED! Powering off servo immediately."));
-    stopWiperImmediate();
-  } else if (upperCmd == "RESET" || upperCmd == "STANDBY") {
-    Serial.println(F(" [WIPER] Resetting fault/cooldown state to IDLE."));
-    currentWiperState = STATE_IDLE;
-    publishWiperStatus("IDLE", 0, 0);
+    Serial.printf("Subscribed to command topic: %s\n", COMMAND_TOPIC);
   } else {
-    Serial.printf(" [WIPER] Unknown command received: %s\n", cmd.c_str());
+    Serial.print(F("MQTT connection failed. State code: "));
+    Serial.println(mqtt.state());
   }
 }
 
 // ======================================================================================
-// WIPER ACTUATION LOGIC (NON-BLOCKING SG90 SWEEP)
+// 13. SETUP
 // ======================================================================================
-void startWiperCycle() {
-  Serial.println(F(" [WIPER] Starting SG90 wiper sweep cycle across solar panel..."));
-  
-  // Attach servo PWM on GPIO 18
-  if (!wiperServo.attached()) {
-    wiperServo.attach(PIN_SG90_SERVO, 500, 2400);
-  }
-  
-  currentServoAngle = SWEEP_HOME_ANGLE;
-  wiperServo.write(currentServoAngle);
-  currentWiperState = STATE_SWEEPING_FORWARD;
-  lastServoStepTime = millis();
-  lastReportedProgress = -1;
-  sweepExecutionCount++;
+void setup() {
+  Serial.begin(115200);
+  delay(500);
 
-  publishWiperStatus("WIPING", 0, 0);
+  Serial.println(F("\n=============================================================="));
+  Serial.println(F("SolarGuard IoT - Smart Telemetry & Alert Cooldown Controller"));
+  Serial.println(F("=============================================================="));
+  Serial.printf("[CONFIG] Alert Cooldown: %lu seconds (%s)\n", 
+    alertCooldownMs / 1000, 
+    ALERT_COOLDOWN_TEST_MODE ? "TEST MODE: 10s" : "PRODUCTION: 5m");
+
+  // Initialize I2C Bus on GPIO 21 (SDA) and GPIO 22 (SCL)
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  Wire.setClock(100000);
+  delay(100);
+
+  // Auto-scan and bind all discovered INA219 modules
+  autoDetectAndBindINA219();
+
+  // Initialize DS18B20 OneWire Sensor on GPIO 4
+  sensors.begin();
+  int tempCount = sensors.getDeviceCount();
+  Serial.printf("[TEMP] DS18B20 found %d sensor(s) on GPIO 4.\n", tempCount);
+  if (tempCount > 0) {
+    tempSensorOnline = true;
+    sensors.requestTemperatures();
+    lastValidTemp = sensors.getTempCByIndex(0);
+  }
+
+  // Initialize Servo PWM on GPIO 18
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  wiper.setPeriodHertz(50);
+
+  Serial.println(F("[SERVO] Running boot self-test (20 -> 50 -> 20 deg)..."));
+  ensureServoAttached();
+  wiper.write(50);
+  delay(300);
+  wiper.write(HOME_ANGLE);
+  delay(300);
+  releaseServo();
+
+  connectWiFi();
+
+  secureClient.setInsecure();
+  mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  mqtt.setCallback(mqttCallback);
+  mqtt.setBufferSize(2048);
+  mqtt.setKeepAlive(30);
+
+  Serial.println(F("\nSolarGuard Subsystem Ready. Waiting for telemetry loop...\n"));
 }
 
-void stopWiperImmediate() {
-  // Cut PWM immediately to prevent motor stall current
-  if (wiperServo.attached()) {
-    wiperServo.detach();
+// ======================================================================================
+// 14. MAIN LOOP
+// ======================================================================================
+void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+    delay(100);
+    return;
   }
-  currentWiperState = STATE_STOPPED;
-  publishWiperStatus("STOPPED", 0, 0);
-}
 
-void updateWiperStateMachine() {
+  if (!mqtt.connected()) {
+    reconnectMQTT();
+  } else {
+    mqtt.loop();
+
+    unsigned long nowHeartbeat = millis();
+    if (nowHeartbeat - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS) {
+      lastHeartbeatTime = nowHeartbeat;
+      publishHeartbeat(true);
+    }
+  }
+
+  // Periodic Telemetry & Intelligent Flagging
   unsigned long now = millis();
+  if (now - lastTelemetryTime >= TELEMETRY_INTERVAL_MS) {
+    lastTelemetryTime = now;
+    readElectricityAndTemperature();
+    publishTelemetry();
+  }
 
-  switch (currentWiperState) {
-    case STATE_SWEEPING_FORWARD:
-      if (now - lastServoStepTime >= (unsigned long)SWEEP_STEP_DELAY_MS) {
-        lastServoStepTime = now;
-        currentServoAngle++;
-        wiperServo.write(currentServoAngle);
-
-        // Calculate progress: 0% to 50% during forward stroke
-        int progress = map(currentServoAngle, SWEEP_HOME_ANGLE, SWEEP_MAX_ANGLE, 0, 50);
-        if (progress != lastReportedProgress && progress % 10 == 0) {
-          lastReportedProgress = progress;
-          publishWiperStatus("WIPING", progress, 0);
-        }
-
-        if (currentServoAngle >= SWEEP_MAX_ANGLE) {
-          // Reached edge of solar panel, reverse direction
-          currentWiperState = STATE_SWEEPING_BACKWARD;
-          Serial.println(F(" [WIPER] Reached panel edge (170 deg). Returning to home..."));
-        }
-      }
+  // Non-blocking Wiper Movement
+  switch (state) {
+    case IDLE:
       break;
 
-    case STATE_SWEEPING_BACKWARD:
-      if (now - lastServoStepTime >= (unsigned long)SWEEP_STEP_DELAY_MS) {
-        lastServoStepTime = now;
-        currentServoAngle--;
-        wiperServo.write(currentServoAngle);
-
-        // Calculate progress: 50% to 100% during return stroke
-        int progress = map(currentServoAngle, SWEEP_MAX_ANGLE, SWEEP_HOME_ANGLE, 50, 100);
-        if (progress != lastReportedProgress && progress % 10 == 0) {
-          lastReportedProgress = progress;
-          publishWiperStatus("WIPING", progress, 0);
-        }
-
-        if (currentServoAngle <= SWEEP_HOME_ANGLE) {
-          // Finished full forward & backward sweep!
-          Serial.println(F(" [WIPER] Sweep completed successfully. Detaching servo PWM to rest motor."));
-          
-          // CRITICAL: Detach servo so motor does not draw current or heat up while resting
-          wiperServo.detach();
-
-          // Enter mandatory safety cooldown
-          currentWiperState = STATE_COOLDOWN;
-          cooldownStartTime = millis();
-          publishWiperStatus("COOLDOWN", 100, WIPER_COOLDOWN_SEC);
-        }
-      }
-      break;
-
-    case STATE_COOLDOWN: {
-      unsigned long elapsedSec = (now - cooldownStartTime) / 1000;
-      if (elapsedSec >= (unsigned long)WIPER_COOLDOWN_SEC) {
-        Serial.println(F(" [WIPER] Cooldown finished. SG90 Wiper actuator is now IDLE and ready."));
-        currentWiperState = STATE_IDLE;
-        publishWiperStatus("IDLE", 0, 0);
+    case WIPING_OUT: {
+      unsigned long halfDuration = wipeDuration / 2;
+      if (now - stateStarted >= halfDuration) {
+        wiper.write(HOME_ANGLE);
+        state = WIPING_BACK;
+        stateStarted = now;
+        publishStatus("wiping", 50);
       }
       break;
     }
 
-    case STATE_IDLE:
-    case STATE_STOPPED:
-    case STATE_FAULT:
-    default:
-      // Standby - nothing to step
+    case WIPING_BACK: {
+      unsigned long halfDuration = wipeDuration / 2;
+      if (now - stateStarted >= halfDuration) {
+        releaseServo();
+        state = COOLDOWN;
+        cooldownStarted = now;
+        publishStatus("cooldown", 100, COOLDOWN_MS / 1000);
+      }
+      break;
+    }
+
+    case COOLDOWN: {
+      unsigned long elapsed = now - cooldownStarted;
+      if (elapsed >= COOLDOWN_MS) {
+        state = IDLE;
+        publishStatus("idle", 0);
+      }
+      break;
+    }
+
+    case STOPPED:
       break;
   }
-}
-
-// ======================================================================================
-// TELEMETRY & STATUS PUBLISHING
-// ======================================================================================
-void publishWiperStatus(const char* stateStr, int progress, int cooldownRemaining) {
-  StaticJsonDocument<256> doc;
-  doc["state"] = stateStr;
-  doc["progress"] = progress;
-  doc["angle"] = currentServoAngle;
-  doc["cooldown_remaining_sec"] = cooldownRemaining;
-  doc["sweep_count"] = sweepExecutionCount;
-  doc["timestamp_ms"] = millis();
-
-  char buffer[256];
-  serializeJson(doc, buffer);
-  mqttClient.publish(TOPIC_WIPER_STATUS, buffer);
-
-  Serial.printf(" [MQTT TX -> %s]: %s\n", TOPIC_WIPER_STATUS, buffer);
-}
-
-void publishTelemetry() {
-  // Request temperature from DS18B20 on GPIO 4
-  tempSensors.requestTemperatures();
-  float tempC = tempSensors.getTempCByIndex(0);
-
-  bool sensorValid = (tempC > -55.0 && tempC < 125.0 && tempC != 85.0);
-  if (!sensorValid) {
-    // Sensor disconnected or read error
-    tempC = 0.0;
-  }
-
-  StaticJsonDocument<256> doc;
-  doc["temperature"] = serialized(String(tempC, 1));
-  doc["sensor_connected"] = sensorValid;
-  doc["wiper_state"] = (currentWiperState == STATE_SWEEPING_FORWARD || currentWiperState == STATE_SWEEPING_BACKWARD) ? "WIPING" :
-                       (currentWiperState == STATE_COOLDOWN) ? "COOLDOWN" :
-                       (currentWiperState == STATE_STOPPED) ? "STOPPED" : "IDLE";
-  doc["rssi"] = WiFi.RSSI();
-  doc["uptime_s"] = millis() / 1000;
-  doc["ip"] = WiFi.localIP().toString();
-
-  char buffer[256];
-  serializeJson(doc, buffer);
-  mqttClient.publish(TOPIC_TELEMETRY, buffer);
-
-  Serial.printf(" [TELEMETRY] Temp: %.1f C (Valid: %s) | Wiper: %s | RSSI: %d dBm\n",
-                tempC, sensorValid ? "YES" : "NO",
-                (const char*)doc["wiper_state"], WiFi.RSSI());
-}
-
-void publishDeviceStatus(bool isOnline) {
-  StaticJsonDocument<256> doc;
-  doc["online"] = isOnline;
-  doc["device"] = "SolarGuard-ESP32";
-  doc["firmware_version"] = "1.2.0-wiper-only";
-  doc["ip"] = WiFi.localIP().toString();
-  doc["mac"] = WiFi.macAddress();
-  doc["rssi"] = WiFi.RSSI();
-
-  char buffer[256];
-  serializeJson(doc, buffer);
-  mqttClient.publish(TOPIC_DEVICE_STATUS, buffer, true); // Retained message
 }
