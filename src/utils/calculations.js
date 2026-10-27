@@ -29,6 +29,7 @@ export function evaluatePanelHealth(panel, allPanels, settings = {}) {
   const voltages = allPanels.map((p) => p.voltage_v || 0);
   const medianPower = calculateMedian(powers);
   const maxVoltage = Math.max(...voltages, 0);
+  const maxPower = Math.max(...powers, 0);
 
   if (panel.status === 'offline') {
     return {
@@ -40,7 +41,20 @@ export function evaluatePanelHealth(panel, allPanels, settings = {}) {
     };
   }
 
-  // If ESP32 firmware already identified underperformance
+  // 1. CRITICAL: Peak illuminated panel is ALWAYS OPTIMAL!
+  const isPeak = (maxPower > 0 && panel.power_w === maxPower) || 
+                 (maxVoltage > 0 && panel.voltage_v === maxVoltage);
+  if (isPeak && (panel.flag === 'NORMAL' || !panel.flag || panel.status === 'optimal')) {
+    return {
+      status: 'optimal',
+      severity: 'success',
+      message: 'Peak illuminated panel operating at maximum efficiency',
+      deviationPercent: 0,
+      medianPower,
+    };
+  }
+
+  // 2. If ESP32 firmware already identified underperformance
   if (panel.flag === 'UNDERPERFORMING' || panel.status === 'warning') {
     const dev = panel.deviation_pct != null ? panel.deviation_pct : -50;
     return {
@@ -52,8 +66,8 @@ export function evaluatePanelHealth(panel, allPanels, settings = {}) {
     };
   }
 
-  // If dusk or dark (no significant power and no significant voltage)
-  if (medianPower < minSunlightW && maxVoltage < 0.40) {
+  // 3. If dusk or dark (no significant power and no significant voltage)
+  if (maxPower < minSunlightW && maxVoltage < 0.40) {
     return {
       status: 'low_ambient_light',
       severity: 'info',
@@ -63,14 +77,27 @@ export function evaluatePanelHealth(panel, allPanels, settings = {}) {
     };
   }
 
-  // If illuminated under open-circuit (current = 0, but voltage present from flashlight)
-  if (medianPower < minSunlightW && maxVoltage >= 0.40) {
-    if (panel.voltage_v < maxVoltage * 0.88 || (maxVoltage - panel.voltage_v) >= 0.07) {
+  // 4. Ambient indoor room light:
+  // If no panel has active bright illumination (maxVoltage < 0.92V) and spread is small (< 0.12V),
+  // all panels are operating normally in ambient room light!
+  if (maxVoltage < 0.92 && (maxVoltage - panel.voltage_v) < 0.12) {
+    return {
+      status: 'optimal',
+      severity: 'success',
+      message: 'Operating normally within peer tolerances',
+      deviationPercent: 0,
+      medianPower,
+    };
+  }
+
+  // 5. Active illumination differential (flashlight or direct sun)
+  if (maxVoltage >= 0.92 || maxPower >= 0.012) {
+    if (panel.voltage_v < maxVoltage * 0.86 || (maxVoltage - panel.voltage_v) >= 0.10) {
       const dropPct = Math.round(((maxVoltage - panel.voltage_v) / maxVoltage) * 100);
       return {
         status: 'warning',
         severity: 'warning',
-        message: `Voltage is ${dropPct}% below illuminated panel (${maxVoltage.toFixed(2)}V)`,
+        message: `Output is ${dropPct}% below peak illuminated panel (${maxVoltage.toFixed(2)}V)`,
         deviationPercent: -dropPct,
         medianPower,
       };

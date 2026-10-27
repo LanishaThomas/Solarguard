@@ -343,15 +343,46 @@ export function SolarGuardProvider({ children }) {
 
         // 3. System Alerts from ESP32
         if (topic === `${prefix}/alerts` || topic === `${prefix}/temperature/alert`) {
-          if (payload.title && payload.message) {
-            addAlert({
-              type: payload.type || payload.alert || 'SYSTEM_ALERT',
-              severity: payload.severity || 'warning',
-              panelId: payload.panel_id || null,
-              title: payload.title,
-              message: payload.message,
-              recommendedAction: payload.recommendedAction || 'Check SolarGuard monitoring dashboard.'
-            });
+          if (payload.type === 'PANELS_NORMAL') {
+            // Auto-resolve any active PEER_UNDERPERFORMANCE alerts when array normalizes
+            setAlerts((prev) =>
+              prev.map((a) =>
+                a.type === 'PEER_UNDERPERFORMANCE' && !a.acknowledged
+                  ? { ...a, acknowledged: true, resolvedAt: new Date().toISOString() }
+                  : a
+              )
+            );
+          } else if (payload.title && payload.message) {
+            // When a new PEER_UNDERPERFORMANCE alert arrives, replace previous active ones
+            // so stale alerts from prior flashlight positions are instantly cleared
+            if (payload.type === 'PEER_UNDERPERFORMANCE') {
+              setAlerts((prev) => {
+                const filtered = prev.filter((a) => a.type !== 'PEER_UNDERPERFORMANCE' || a.acknowledged);
+                return [
+                  {
+                    id: `ALT-${Date.now().toString().slice(-4)}`,
+                    timestamp: new Date().toISOString(),
+                    acknowledged: false,
+                    type: payload.type,
+                    severity: payload.severity || 'warning',
+                    panelId: payload.panel_id || null,
+                    title: payload.title,
+                    message: payload.message,
+                    recommendedAction: payload.recommendedAction || 'Check SolarGuard monitoring dashboard.'
+                  },
+                  ...filtered
+                ];
+              });
+            } else {
+              addAlert({
+                type: payload.type || payload.alert || 'SYSTEM_ALERT',
+                severity: payload.severity || 'warning',
+                panelId: payload.panel_id || null,
+                title: payload.title,
+                message: payload.message,
+                recommendedAction: payload.recommendedAction || 'Check SolarGuard monitoring dashboard.'
+              });
+            }
           }
         }
 

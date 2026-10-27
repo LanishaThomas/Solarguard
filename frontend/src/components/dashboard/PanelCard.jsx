@@ -9,6 +9,10 @@ export default function PanelCard({ panel, allPanels, settings, onSelect }) {
 
   const isLow = health.status === 'warning' || health.status === 'critical';
   const isOffline = panel.status === 'offline';
+  const maxVoltage = Math.max(...(allPanels || []).map((p) => p.voltage_v || 0), 0);
+  const maxPower = Math.max(...(allPanels || []).map((p) => p.power_w || 0), 0);
+  const isPeak = (maxPower >= 0.010 && panel.power_w === maxPower) || 
+                 (maxVoltage >= 0.90 && panel.voltage_v === maxVoltage);
 
   return (
     <div
@@ -18,6 +22,8 @@ export default function PanelCard({ panel, allPanels, settings, onSelect }) {
           ? 'border-rose-300 bg-rose-50/50'
           : isLow
           ? 'border-amber-300 bg-amber-50/40'
+          : isPeak
+          ? 'border-amber-400/80 shadow-amber-100/50 hover:border-amber-500'
           : 'border-slate-200 hover:border-blue-300'
       }`}
     >
@@ -25,12 +31,17 @@ export default function PanelCard({ panel, allPanels, settings, onSelect }) {
         {/* Card Header */}
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-sm" />
+            <span className={`w-2.5 h-2.5 rounded-full shadow-sm ${isPeak ? 'bg-amber-500 ring-2 ring-amber-300 animate-pulse' : 'bg-blue-600'}`} />
             <h3 className="font-heading font-semibold text-base sm:text-lg text-slate-900">
               {panel.name}
             </h3>
           </div>
           <div className="flex items-center gap-1.5">
+            {isPeak && (
+              <span className="text-[10px] font-mono text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300 font-bold">
+                PEAK LIGHT
+              </span>
+            )}
             <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-semibold">
               {panel.i2c_address}
             </span>
