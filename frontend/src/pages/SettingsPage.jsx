@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useSolarGuard } from '../context/SolarGuardContext';
-import { 
-  Sliders, 
-  Cpu, 
-  RotateCw, 
-  CheckCircle2, 
+import {
+  Sliders,
+  Cpu,
+  RotateCw,
+  CheckCircle2,
   Save,
   Database,
   ExternalLink,
@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { 
-    settings, 
+  const {
+    settings,
     setSettings,
     modelStatus,
     backendUrl,
@@ -159,7 +159,7 @@ export default function SettingsPage() {
               <input
                 type="number"
                 step="0.05"
-                min="0.4"
+                min="0"
                 max="0.9"
                 value={localSettings.peerDropThreshold}
                 onChange={(e) =>
@@ -239,7 +239,7 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-semibold">
                 <Database className="w-3.5 h-3.5 text-blue-600" /> db.system_settings
@@ -342,11 +342,10 @@ export default function SettingsPage() {
             </div>
 
             {emailStatus && (
-              <div className={`p-3 rounded-lg text-xs font-mono border animate-fade-in ${
-                emailStatus.success 
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900' 
-                  : 'bg-rose-50 border-rose-300 text-rose-900'
-              }`}>
+              <div className={`p-3 rounded-lg text-xs font-mono border animate-fade-in ${emailStatus.success
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                : 'bg-rose-50 border-rose-300 text-rose-900'
+                }`}>
                 <div className="flex items-center gap-1.5 font-bold">
                   {emailStatus.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <ShieldAlert className="w-4 h-4 text-rose-600" />}
                   {emailStatus.message}
