@@ -246,8 +246,8 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Exclusive 3 Trigger Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Exclusive Trigger Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 flex flex-col justify-between">
               <div className="flex items-start gap-2.5">
                 <span className="text-xl">🚨</span>
@@ -273,7 +273,7 @@ export default function SettingsPage() {
                     2. Power Problems
                   </h4>
                   <p className="text-[11px] text-amber-800/90 mt-1 leading-snug">
-                    Triggered when INA219 sensors detect generation dropping significantly below peer baseline (&gt;35% drop).
+                    Triggered when INA219 sensors detect generation dropping significantly below peer baseline.
                   </p>
                 </div>
               </div>
@@ -296,6 +296,23 @@ export default function SettingsPage() {
               </div>
               <span className="text-[10px] font-mono font-bold text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded mt-2.5 inline-block self-start">
                 Thermal Surge Hazard
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-red-50/70 border border-red-200 flex flex-col justify-between">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl">🔌</span>
+                <div>
+                  <h4 className="font-heading font-bold text-xs text-red-950 uppercase tracking-wide">
+                    4. Panel Disconnect
+                  </h4>
+                  <p className="text-[11px] text-red-800/90 mt-1 leading-snug">
+                    Triggered when INA219 detects physical disconnection or open-circuit (0.00V, 0.00A).
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-red-700 bg-red-100/80 px-2 py-0.5 rounded mt-2.5 inline-block self-start">
+                Hardware Disconnect
               </span>
             </div>
           </div>

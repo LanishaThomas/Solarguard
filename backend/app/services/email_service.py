@@ -27,6 +27,14 @@ ALLOWED_PROBLEMS = {
         "badge_text": "#991b1b",
         "default_action": "Automatic wiper lockout engaged. Physical repair/replacement required to prevent electrical arcing."
     },
+    "PANEL_DISCONNECTED": {
+        "title": "🔌 Critical Hardware Fault: Solar Panel Disconnected",
+        "severity": "HARDWARE DISCONNECT",
+        "theme_color": "#dc2626",      # Red
+        "badge_bg": "#fef2f2",
+        "badge_text": "#991b1b",
+        "default_action": "Check physical wiring, INA219 sensor connections, screw terminals, or panel open-circuit immediately."
+    },
     "POWER_UNDERPERFORMANCE": {
         "title": "⚡ Power Anomaly: Panel Output Significantly Underperforming",
         "severity": "POWER FAULT",
