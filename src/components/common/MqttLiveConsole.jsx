@@ -11,7 +11,9 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Zap,
+  PowerOff
 } from 'lucide-react';
 import { useSolarGuard } from '../../context/SolarGuardContext';
 
@@ -20,7 +22,9 @@ export default function MqttLiveConsole({ title = 'Live MQTT Traffic Monitor', d
     mqttTraffic, 
     mqttStats, 
     clearMqttTraffic, 
-    sendMqttTestPulse, 
+    sendMqttTestPulse,
+    injectMqttFault,
+    restoreMqttFaults,
     mqttStatus,
     settings 
   } = useSolarGuard();
@@ -151,6 +155,56 @@ export default function MqttLiveConsole({ title = 'Live MQTT Traffic Monitor', d
                 <Trash2 className="w-3 h-3" /> Clear
               </button>
             )}
+          </div>
+
+          {/* Interactive Fault Injection Toolbar */}
+          <div className="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold font-mono">
+              <Zap className="w-3.5 h-3.5" />
+              <span>Fault Injection:</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => injectMqttFault && injectMqttFault('shade', 2)}
+                className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-mono font-semibold transition cursor-pointer"
+                title="Send MQTT command to simulate low-current shading on Panel 2"
+              >
+                ⚡ Shade P2
+              </button>
+              <button
+                type="button"
+                onClick={() => injectMqttFault && injectMqttFault('disconnect', 2)}
+                className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-mono font-semibold transition cursor-pointer"
+                title="Send MQTT command to simulate disconnecting Panel 2"
+              >
+                🔌 Unplug P2
+              </button>
+              <button
+                type="button"
+                onClick={() => injectMqttFault && injectMqttFault('shade', 1)}
+                className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-mono font-semibold transition cursor-pointer"
+                title="Send MQTT command to simulate shading on Panel 1"
+              >
+                ⚡ Shade P1
+              </button>
+              <button
+                type="button"
+                onClick={() => injectMqttFault && injectMqttFault('disconnect', 1)}
+                className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-mono font-semibold transition cursor-pointer"
+                title="Send MQTT command to simulate disconnecting Panel 1"
+              >
+                🔌 Unplug P1
+              </button>
+              <button
+                type="button"
+                onClick={() => restoreMqttFaults && restoreMqttFaults()}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-mono font-semibold transition cursor-pointer flex items-center gap-1"
+                title="Send MQTT command to clear simulation faults and restore baseline"
+              >
+                <CheckCircle2 className="w-3 h-3" /> Restore All
+              </button>
+            </div>
           </div>
 
           {/* Packet Stream Console Box */}

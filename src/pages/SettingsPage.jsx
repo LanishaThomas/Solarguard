@@ -158,20 +158,19 @@ export default function SettingsPage() {
               </label>
               <input
                 type="number"
-                step="0.05"
-                min="0.4"
-                max="0.9"
-                value={localSettings.peerDropThreshold}
+                step="any"
+                min="0.0001"
+                value={localSettings.peerDropThreshold ?? ''}
                 onChange={(e) =>
                   setLocalSettings({
                     ...localSettings,
-                    peerDropThreshold: Number(e.target.value),
+                    peerDropThreshold: e.target.value === '' ? '' : Number(e.target.value),
                   })
                 }
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                0.70 = Flag if &lt; 70% of peer median
+                0.70 = Flag if &lt; 70% of peer median (adjustable from 0.0001 to anything)
               </p>
             </div>
 

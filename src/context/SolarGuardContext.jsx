@@ -829,6 +829,19 @@ export function SolarGuardProvider({ children }) {
     return { success: false, message: 'MQTT client not connected.' };
   };
 
+  // Interactive Fault Injection via MQTT
+  const injectMqttFault = (faultType = 'shade', panelId = 2) => {
+    return solarGuardMqtt.sendFaultInjection(faultType, panelId);
+  };
+
+  const restoreMqttFaults = () => {
+    return solarGuardMqtt.sendRestoreFaults();
+  };
+
+  const updateMqttPeerDropRatio = (ratio) => {
+    return solarGuardMqtt.sendPeerDropRatio(ratio);
+  };
+
   const setInspectionPreset = (preset) => {
     setInspection((prev) => ({
       ...prev,
@@ -1020,6 +1033,9 @@ export function SolarGuardProvider({ children }) {
         mqttTraffic,
         mqttStats,
         clearMqttTraffic,
+        injectMqttFault,
+        restoreMqttFaults,
+        updateMqttPeerDropRatio,
         dispatchCriticalEmailAlert,
         saveNotificationSettingsToDb,
         sendTestNotificationEmail,
