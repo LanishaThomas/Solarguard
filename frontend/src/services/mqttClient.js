@@ -210,6 +210,38 @@ class SolarGuardMqttClient {
   }
 
   /**
+   * Send Fault Injection Command to ESP32 (e.g. 'shade_2', 'disconnect_2', 'shade_1')
+   */
+  sendFaultInjection(faultType = 'shade', panelId = 2) {
+    return this.publish('wiper/command', {
+      command: `${faultType}_${panelId}`,
+      fault: faultType,
+      panel: panelId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Restore all simulated panels to healthy baseline
+   */
+  sendRestoreFaults() {
+    return this.publish('wiper/command', {
+      command: 'restore',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Send Peer Drop Ratio threshold to ESP32
+   */
+  sendPeerDropRatio(ratio = 0.70) {
+    return this.publish('wiper/command', {
+      peer_drop_ratio: Number(ratio),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
    * Disconnect cleanly
    */
   disconnect() {

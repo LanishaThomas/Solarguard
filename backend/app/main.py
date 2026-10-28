@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,6 +11,7 @@ from .routes.predict import router as predict_router, set_classifier
 from .routes.model_info import router as info_router, set_classifier_for_info
 from .routes.health import router as health_router
 from .routes.notifications import router as notifications_router
+from .services.mqtt_subscriber import mqtt_subscriber
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,7 +42,12 @@ async def lifespan(app: FastAPI):
     from .db.mongodb import db_client
     db_client.connect()
 
+    # Start Background EMQX MQTT Subscriber for direct ESP32 alerts
+    loop = asyncio.get_running_loop()
+    mqtt_subscriber.start(loop)
+
     yield
+    mqtt_subscriber.stop()
     db_client.close()
     logger.info("SolarGuard Inference Service shutting down.")
 
@@ -105,6 +112,16 @@ def get_mqtt_config():
         "topic_prefix": EMQX_TOPIC_PREFIX,
         "platform": "EMQX Cloud",
         "status": "configured"
+    }
+
+@app.get("/api/mqtt/status", tags=["MQTT"])
+def get_mqtt_status():
+    from .config import EMQX_BROKER, EMQX_PORT, EMQX_TOPIC_PREFIX
+    return {
+        "connected": mqtt_subscriber.is_connected,
+        "broker": EMQX_BROKER,
+        "port": EMQX_PORT,
+        "prefix": EMQX_TOPIC_PREFIX
     }
 
 

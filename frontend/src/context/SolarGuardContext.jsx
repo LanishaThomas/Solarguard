@@ -149,10 +149,11 @@ export function SolarGuardProvider({ children }) {
   // 1. CRACK_DETECTED
   // 2. POWER_UNDERPERFORMANCE
   // 3. HIGH_TEMPERATURE
+  // 4. PANEL_DISCONNECTED
   const dispatchCriticalEmailAlert = async ({ problem_type, title, details, panel_id, metrics }) => {
-    const allowed = ['CRACK_DETECTED', 'POWER_UNDERPERFORMANCE', 'HIGH_TEMPERATURE'];
+    const allowed = ['CRACK_DETECTED', 'POWER_UNDERPERFORMANCE', 'HIGH_TEMPERATURE', 'PANEL_DISCONNECTED'];
     if (!allowed.includes(problem_type)) {
-      console.warn(`[SolarGuard Email] Alert type '${problem_type}' blocked. Emails are restricted strictly to Cracks, Power Problems, and Temp > 55°C.`);
+      console.warn(`[SolarGuard Email] Alert type '${problem_type}' blocked.`);
       return { success: false, reason: 'DISALLOWED_PROBLEM_TYPE' };
     }
 
@@ -514,6 +515,28 @@ export function SolarGuardProvider({ children }) {
                 title: payload.title,
                 message: payload.message,
                 recommendedAction: payload.recommendedAction || 'Inspect solar array cooling.'
+              });
+            } else if (payload.type === 'PANEL_DISCONNECTED') {
+              // Check for Problem 4: Panel Disconnected -> Push email alert!
+              dispatchCriticalEmailAlert({
+                problem_type: 'PANEL_DISCONNECTED',
+                title: payload.title || `Panel ${payload.panel_id || ''} Disconnected`,
+                details: payload.message || `Solar Panel ${payload.panel_id || ''} is physically disconnected or open-circuit (0.00V, 0.00A).`,
+                panel_id: payload.panel_id || null,
+                metrics: {
+                  problem: 'Physical Panel Disconnection / Open Circuit',
+                  affected_panel: payload.panel_id ? `Panel ${payload.panel_id}` : 'Solar Panel',
+                  measured_voltage: '0.00V',
+                  measured_current: '0.00A'
+                }
+              });
+              addAlert({
+                type: 'PANEL_DISCONNECTED',
+                severity: 'critical',
+                panelId: payload.panel_id || null,
+                title: payload.title || `Panel ${payload.panel_id || ''} Disconnected`,
+                message: payload.message,
+                recommendedAction: 'Check solar panel wiring and INA219 connections immediately.'
               });
             } else {
               addAlert({

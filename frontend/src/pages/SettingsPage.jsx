@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useSolarGuard } from '../context/SolarGuardContext';
-import {
-  Sliders,
-  Cpu,
-  RotateCw,
-  CheckCircle2,
+import { 
+  Sliders, 
+  Cpu, 
+  RotateCw, 
+  CheckCircle2, 
   Save,
   Database,
   ExternalLink,
@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 
 export default function SettingsPage() {
-  const {
-    settings,
+  const { 
+    settings, 
     setSettings,
     modelStatus,
     backendUrl,
@@ -158,20 +158,19 @@ export default function SettingsPage() {
               </label>
               <input
                 type="number"
-                step="0.05"
-                min="0"
-                max="0.9"
-                value={localSettings.peerDropThreshold}
+                step="any"
+                min="0.0001"
+                value={localSettings.peerDropThreshold ?? ''}
                 onChange={(e) =>
                   setLocalSettings({
                     ...localSettings,
-                    peerDropThreshold: Number(e.target.value),
+                    peerDropThreshold: e.target.value === '' ? '' : Number(e.target.value),
                   })
                 }
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                0.70 = Flag if &lt; 70% of peer median
+                0.70 = Flag if &lt; 70% of peer median (adjustable from 0.0001 to anything)
               </p>
             </div>
 
@@ -239,7 +238,7 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-
+            
             <div className="flex items-center gap-2 text-xs">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-semibold">
                 <Database className="w-3.5 h-3.5 text-blue-600" /> db.system_settings
@@ -247,8 +246,8 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Exclusive 3 Trigger Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Exclusive Trigger Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 flex flex-col justify-between">
               <div className="flex items-start gap-2.5">
                 <span className="text-xl">🚨</span>
@@ -274,7 +273,7 @@ export default function SettingsPage() {
                     2. Power Problems
                   </h4>
                   <p className="text-[11px] text-amber-800/90 mt-1 leading-snug">
-                    Triggered when INA219 sensors detect generation dropping significantly below peer baseline (&gt;35% drop).
+                    Triggered when INA219 sensors detect generation dropping significantly below peer baseline.
                   </p>
                 </div>
               </div>
@@ -297,6 +296,23 @@ export default function SettingsPage() {
               </div>
               <span className="text-[10px] font-mono font-bold text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded mt-2.5 inline-block self-start">
                 Thermal Surge Hazard
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-red-50/70 border border-red-200 flex flex-col justify-between">
+              <div className="flex items-start gap-2.5">
+                <span className="text-xl">🔌</span>
+                <div>
+                  <h4 className="font-heading font-bold text-xs text-red-950 uppercase tracking-wide">
+                    4. Panel Disconnect
+                  </h4>
+                  <p className="text-[11px] text-red-800/90 mt-1 leading-snug">
+                    Triggered when INA219 detects physical disconnection or open-circuit (0.00V, 0.00A).
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-red-700 bg-red-100/80 px-2 py-0.5 rounded mt-2.5 inline-block self-start">
+                Hardware Disconnect
               </span>
             </div>
           </div>
@@ -342,10 +358,11 @@ export default function SettingsPage() {
             </div>
 
             {emailStatus && (
-              <div className={`p-3 rounded-lg text-xs font-mono border animate-fade-in ${emailStatus.success
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                : 'bg-rose-50 border-rose-300 text-rose-900'
-                }`}>
+              <div className={`p-3 rounded-lg text-xs font-mono border animate-fade-in ${
+                emailStatus.success 
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900' 
+                  : 'bg-rose-50 border-rose-300 text-rose-900'
+              }`}>
                 <div className="flex items-center gap-1.5 font-bold">
                   {emailStatus.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <ShieldAlert className="w-4 h-4 text-rose-600" />}
                   {emailStatus.message}
